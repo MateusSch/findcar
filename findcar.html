@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gestão de Pátio</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS (Mapa) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    
+    <!-- Configuração do Firebase (Arquivo separado e secreto) -->
+    <script src="firebase-config.js"></script>
+
+    <style>
+        /* Garante que o layout ocupe toda a tela e impede o "pulo" da barra de endereço no mobile */
+        html, body { 
+            height: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            position: fixed;
+            width: 100%;
+        }
+        #app-container { 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; /* Usa a altura da viewport */
+            background-color: #f7fafc; 
+        }
+        #map { 
+            flex-shrink: 0; /* Impede que o mapa encolha */
+        }
+        #car-list-container { 
+            flex-grow: 1; 
+            overflow-y: auto; /* Permite que a lista cresça e tenha scroll */
+            -webkit-overflow-scrolling: touch; /* Melhora o scroll no iOS */
+        }
+        .leaflet-control-zoom { 
+            display: none; /* Opcional: esconde os botões de zoom +/- */
+        }
+        
+        /* Estilo para o modal do scanner */
+        #scanner-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        #scanner-container {
+            width: 90%; max-width: 500px;
+            background: white; padding: 20px; border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        #reader { 
+            border: 2px solid #e5e7eb; 
+            border-radius: 8px; 
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div id="app-container" class="md:flex-row">
+        <!-- MAPA -->
+        <div id="map" class="h-2/5 md:h-full md:w-3/5"></div>
+
+        <!-- LISTA DE CARROS -->
+        <div id="car-list-container" class="p-2 bg-slate-100 md:w-2/5">
+            <h2 class="text-xl font-bold text-slate-700 p-2 sticky top-0 bg-slate-100 z-10">Carros Estacionados</h2>
+            <div id="car-list" class="space-y-2">
+                <!-- Cards de carro serão injetados aqui -->
+                <p id="loading-text" class="text-center text-slate-500 p-4">Carregando dados do pátio...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botão Flutuante (FAB) para Scan -->
+    <button id="scan-btn" class="fixed bottom-6 right-6 bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-blue-700 transition-transform transform hover:scale-110 z-20">
+        📷
+    </button>
+
+    <!-- Modal do Scanner (invisível por padrão) -->
+    <div id="scanner-modal" class="hidden">
+        <div id="scanner-container">
+            <h3 class="text-lg font-bold mb-2 text-center">Aponte para o QR Code do Carro</h3>
+            <div id="reader"></div>
+            <button id="close-scanner-btn" class="w-full mt-4 bg-red-500 text-white p-3 rounded-lg font-semibold">Cancelar</button>
+        </div>
+    </div>
+
+
+    <!-- Leaflet.js -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Biblioteca de Scanner de QR Code -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    
+    <!-- SDKs do Firebase -->
+    <script type="module">
+        // Importa as funções necessárias do SDK do Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // A variável 'firebaseConfig' é carregada do arquivo externo 'firebase-config.js'
+        // que está listado no .gitignore e não é enviado para o GitHub.
+
+        // Inicializa o Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const carsCollection = collection(db, "parkedCars");
+
+        // --- LÓGICA DO MAPA ---
+        const map = L.map('map').setView([-25.4411, -49.2731], 14); // Padrão: Curitiba
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        let markers = {}; // Objeto para guardar os marcadores e acessá-los pelo docId
+
+        // --- LÓGICA DA UI ---
+        const scanBtn = document.getElementById('scan-btn');
+        const scannerModal = document.getElementById('scanner-modal');
+        const closeScannerBtn = document.getElementById('close-scanner-btn');
+        const carListDiv = document.getElementById('car-list');
+        const loadingText = document.getElementById('loading-text');
+
+        // Instancia o leitor de QR Code
+        const html5QrCode = new Html5Qrcode("reader", { formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ] });
+
+        scanBtn.addEventListener('click', startScanner);
+        closeScannerBtn.addEventListener('click', stopScanner);
+        
+        function startScanner() {
+            scannerModal.classList.remove('hidden');
+            html5QrCode.start(
+                { facingMode: "environment" }, // Usa a câmera traseira
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                onScanSuccess,
+                (errorMessage) => { /* Ignora erros de "QR Code não encontrado" */ }
+            ).catch(err => {
+                alert("Erro ao iniciar a câmera. Por favor, conceda a permissão de acesso à câmera no seu navegador.");
+                stopScanner();
+            });
+        }
+
+        function stopScanner() {
+            html5QrCode.stop().then(() => {
+                scannerModal.classList.add('hidden');
+            }).catch(err => { /* Ignora erro se o scanner já estiver parado */ });
+        }
+
+        function onScanSuccess(decodedText, decodedResult) {
+            stopScanner();
+            try {
+                const qrData = JSON.parse(decodedText);
+                if (qrData.carId) {
+                    saveCarLocation(qrData.carId);
+                } else {
+                    alert("QR Code inválido. O código escaneado não contém um 'carId'.");
+                }
+            } catch (e) {
+                alert("Formato do QR Code inválido. O conteúdo não é um JSON válido.");
+            }
+        }
+        
+        // --- LÓGICA DE DADOS ---
+        function saveCarLocation(carId) {
+            alert(`Carro ${carId} escaneado. Obtendo localização...`);
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const { latitude, longitude } = position.coords;
+                try {
+                    await addDoc(carsCollection, {
+                        carId: carId,
+                        lat: latitude,
+                        lon: longitude,
+                        timestamp: new Date()
+                    });
+                    alert(`Carro ${carId} salvo com sucesso no pátio!`);
+                } catch (e) {
+                    console.error("Erro ao adicionar documento: ", e);
+                    alert("Erro ao salvar no banco de dados. Verifique a conexão e as regras do Firestore.");
+                }
+            }, (error) => {
+                alert("Não foi possível obter a localização. Verifique se o GPS está ativado e se você concedeu permissão de acesso.");
+            }, {
+                enableHighAccuracy: true // Pede a localização mais precisa possível
+            });
+        }
+        
+        // --- ATUALIZAÇÃO EM TEMPO REAL ---
+        const q = query(carsCollection, orderBy("timestamp", "desc"));
+        
+        onSnapshot(q, (snapshot) => {
+            loadingText.style.display = 'none';
+            carListDiv.innerHTML = ''; 
+            
+            Object.values(markers).forEach(marker => map.removeLayer(marker));
+            markers = {};
+
+            if (snapshot.empty) {
+                carListDiv.innerHTML = '<p class="text-center text-slate-500 p-4">Nenhum carro estacionado no pátio.</p>';
+                return;
+            }
+
+            snapshot.forEach(doc => {
+                const car = doc.data();
+                const docId = doc.id;
+
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3 rounded-lg shadow-sm flex justify-between items-center';
+                card.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${car.carId}</p>
+                        <p class="text-sm text-slate-500">${car.timestamp.toDate().toLocaleString('pt-BR')}</p>
+                    </div>
+                    <button data-doc-id="${docId}" class="pan-to-map-btn bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-sm font-semibold hover:bg-slate-300">Ver</button>
+                `;
+                carListDiv.appendChild(card);
+                
+                const marker = L.marker([car.lat, car.lon]).addTo(map)
+                    .bindPopup(`<b>${car.carId}</b>`);
+                markers[docId] = marker;
+            });
+        });
+
+        carListDiv.addEventListener('click', (e) => {
+            if (e.target.classList.contains('pan-to-map-btn')) {
+                const docId = e.target.dataset.docId;
+                if (markers[docId]) {
+                    const marker = markers[docId];
+                    map.flyTo(marker.getLatLng(), 17, {
+                        animate: true,
+                        duration: 1.0
+                    });
+                    marker.openPopup();
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
