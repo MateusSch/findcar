@@ -39,6 +39,9 @@ jobs:
       # 3. Configura o ambiente para o deploy no GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # Ativa o GitHub Pages para o repositório se ainda não estiver ativado
+          enablement: true
 
       # 4. Compila os arquivos do site
       - name: Upload artifact
