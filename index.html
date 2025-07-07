@@ -78,6 +78,16 @@
             padding: 8px;
             box-shadow: 0 1px 5px rgba(0,0,0,0.4);
         }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-10px); }
+        }
+        .animate-fadeIn { animation: fadeIn 0.3s forwards; }
+        .animate-fadeOut { animation: fadeOut 0.3s forwards; }
     </style>
 </head>
 <body>
@@ -187,7 +197,7 @@
         let map;
         let markers = {};
         let userPosition = null;
-        let html5QrCode;
+        let html5QrCode = null;
         let currentFilter = 'all';
 
         // Inicializar Mapa
@@ -202,7 +212,6 @@
                 maxZoom: 19
             }).addTo(map);
             
-            // Controle de zoom otimizado para mobile
             L.control.zoom({
                 position: 'bottomright'
             }).addTo(map);
@@ -260,7 +269,7 @@
                 () => {} // Ignore error logs for not found QR
             ).catch(err => {
                 console.error("Erro ao iniciar scanner:", err);
-                alert("Erro ao acessar a câmera: " + err.message);
+                showNotification("Erro ao acessar a câmera: " + err.message, 'error');
                 stopScanner();
             });
         }
@@ -528,22 +537,6 @@
                 setupEventListeners();
                 await getUserLocation();
                 setupRealtimeUpdates();
-                
-                // CSS para animações
-                const style = document.createElement('style');
-                style.textContent = `
-                    @keyframes fadeIn {
-                        from { opacity: 0; transform: translateY(-10px); }
-                        to { opacity: 1; transform: translateY(0); }
-                    }
-                    @keyframes fadeOut {
-                        from { opacity: 1; transform: translateY(0); }
-                        to { opacity: 0; transform: translateY(-10px); }
-                    }
-                    .animate-fadeIn { animation: fadeIn 0.3s forwards; }
-                    .animate-fadeOut { animation: fadeOut 0.3s forwards; }
-                `;
-                document.head.appendChild(style);
                 
             } catch (error) {
                 console.error("Erro na inicialização:", error);
