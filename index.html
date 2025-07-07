@@ -47,7 +47,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 10000;
+            display: none; /* Inicia oculto por padrão */
         }
         .scanner-overlay {
             position: absolute;
@@ -61,6 +62,7 @@
             border: 4px solid #3b82f6;
             border-radius: 8px;
             box-shadow: 0 0 0 100vmax rgba(0,0,0,0.5);
+            pointer-events: none;
         }
         .car-item {
             transition: all 0.2s;
@@ -77,6 +79,13 @@
             border-radius: 4px;
             padding: 8px;
             box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+        }
+        .notification {
+            z-index: 10001;
+        }
+        #close-scanner-btn {
+            z-index: 10001;
+            position: relative;
         }
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(-10px); }
@@ -142,8 +151,8 @@
         </svg>
     </button>
 
-    <div id="scanner-modal" class="hidden">
-        <div class="w-full max-w-md">
+    <div id="scanner-modal">
+        <div class="w-full max-w-md relative">
             <div class="text-center mb-4">
                 <h3 class="text-xl font-bold text-white">Escaneie o QR Code</h3>
                 <p class="text-gray-300 mt-1">Aponte para o código do veículo</p>
@@ -155,7 +164,7 @@
             </div>
             
             <div class="mt-6 flex justify-center">
-                <button id="close-scanner-btn" class="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors">
+                <button id="close-scanner-btn" class="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors z-10001">
                     Cancelar
                 </button>
             </div>
@@ -173,8 +182,7 @@
             addDoc, 
             onSnapshot, 
             query, 
-            orderBy,
-            where
+            orderBy
         } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         // Inicializar Firebase
@@ -247,26 +255,34 @@
 
         // Iniciar scanner de QR Code
         function startScanner() {
-            scannerModal.classList.remove('hidden');
+            scannerModal.style.display = 'flex';
             
-            if (!html5QrCode) {
-                html5QrCode = new Html5Qrcode("reader", {
-                    formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-                    experimentalFeatures: {
-                        useBarCodeDetectorIfSupported: true
-                    }
-                });
+            // Se já existe um scanner ativo, pare antes de iniciar novo
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(() => {});
             }
             
+            // Criar nova instância do scanner
+            html5QrCode = new Html5Qrcode("reader", {
+                formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+                verbose: false
+            });
+            
+            // Iniciar a câmera
             html5QrCode.start(
                 { facingMode: "environment" },
                 { 
                     fps: 10, 
                     qrbox: { width: 250, height: 250 },
-                    aspectRatio: 1.0
+                    aspectRatio: 1.0,
+                    focusMode: "continuous"
                 },
                 onScanSuccess,
-                () => {} // Ignore error logs for not found QR
+                (error) => {
+                    if (error && !error.message.includes("No QR code found")) {
+                        console.log("Scanner info:", error);
+                    }
+                }
             ).catch(err => {
                 console.error("Erro ao iniciar scanner:", err);
                 showNotification("Erro ao acessar a câmera: " + err.message, 'error');
@@ -278,14 +294,17 @@
         function stopScanner() {
             if (html5QrCode && html5QrCode.isScanning) {
                 html5QrCode.stop().then(() => {
-                    scannerModal.classList.add('hidden');
+                    scannerModal.style.display = 'none';
                 }).catch(err => {
-                    console.error("Erro ao parar scanner:", err);
-                    scannerModal.classList.add('hidden');
+                    console.log("Scanner já parado:", err);
+                    scannerModal.style.display = 'none';
                 });
             } else {
-                scannerModal.classList.add('hidden');
+                scannerModal.style.display = 'none';
             }
+            
+            // Resetar instância do scanner
+            html5QrCode = null;
         }
         
         // Sucesso no scan do QR Code
@@ -458,8 +477,13 @@
         
         // Event Listeners
         function setupEventListeners() {
+            // Botão Scan - Iniciar scanner
             scanBtn.addEventListener('click', startScanner);
+            
+            // Botão Cancelar - Parar scanner
             closeScannerBtn.addEventListener('click', stopScanner);
+            
+            // Botão Localização
             locationBtn.addEventListener('click', () => {
                 if (userPosition) {
                     map.flyTo([userPosition.lat, userPosition.lng], 18);
@@ -495,6 +519,7 @@
                 refreshData();
             });
             
+            // Atualizar dados
             refreshBtn.addEventListener('click', refreshData);
         }
         
@@ -505,10 +530,14 @@
             onSnapshot(q, (snapshot) => {
                 const cars = [];
                 snapshot.forEach(doc => {
+                    const data = doc.data();
                     cars.push({
                         id: doc.id,
-                        ...doc.data(),
-                        timestamp: doc.data().timestamp.toDate()
+                        carId: data.carId,
+                        lat: data.lat,
+                        lng: data.lng,
+                        status: data.status || 'parked',
+                        timestamp: data.timestamp.toDate()
                     });
                 });
                 
@@ -526,13 +555,16 @@
                 </div>
             `;
             
-            // Simular recarregamento
-            setTimeout(setupRealtimeUpdates, 500);
+            // Forçar recarregamento
+            setupRealtimeUpdates();
         }
         
         // Inicialização
         async function initApp() {
             try {
+                // Garantir que o modal está oculto na inicialização
+                scannerModal.style.display = 'none';
+                
                 initMap();
                 setupEventListeners();
                 await getUserLocation();
