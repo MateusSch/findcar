@@ -1,107 +1,164 @@
-// Importa as funções necessárias do SDK do Firebase
+// Importa as funções do Firebase
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { 
-    getFirestore, 
-    collection, 
-    addDoc, 
-    onSnapshot, 
-    query, 
-    where,
-    getDocs,
-    doc,
-    updateDoc,
-    orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, where, getDocs, doc, updateDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// A variável 'firebaseConfig' é carregada do arquivo 'firebase-config.js' no HTML.
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const carsCollection = collection(db, "parkedCars");
 
-// --- Seleção dos Elementos da UI e Estado Global ---
+// --- Seleção dos Elementos da UI ---
 const mapElement = document.getElementById('map');
 const scanBtn = document.getElementById('scan-btn');
-const locationBtn = document.getElementById('location-btn');
 const scannerModal = document.getElementById('scanner-modal');
-const closeScannerBtn = document.getElementById('close-scanner-btn');
+const scannerView = document.getElementById('scanner-view');
+const manualView = document.getElementById('manual-view');
+const toggleManualBtn = document.getElementById('toggle-manual-btn');
+const closeModalBtn = document.getElementById('close-modal-btn');
+const manualCarIdInput = document.getElementById('manual-car-id');
+const manualSaveBtn = document.getElementById('manual-save-btn');
+const locationBtn = document.getElementById('location-btn');
 const carListDiv = document.getElementById('car-list');
 const searchInput = document.getElementById('search-input');
 const filterBtn = document.getElementById('filter-btn');
 const refreshBtn = document.getElementById('refresh-btn');
 
-let map;
-let markers = {};
-let html5QrCode = null;
-let allCars = [];
-let currentFilter = 'all';
+// --- Estado Global ---
+let map, markers = {}, html5QrCode = null, allCars = [], currentFilter = 'all';
 
-// --- Funções de Inicialização e Lógica Principal ---
+// --- LÓGICA DO MODAL (REVISADA) ---
 
-/**
- * Renderiza a lista de carros na barra lateral.
- * @param {Array<object>} cars - A lista de carros a ser renderizada.
- */
-function updateCarList(cars) {
-    if (cars.length === 0) {
-        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
-        return;
-    }
-
-    // ALTERAÇÃO 1: O HTML do card foi modificado.
-    carListDiv.innerHTML = cars.map(car => `
-        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}">
-            <div class="flex-1">
-                <div class="flex items-center justify-between">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${car.status === 'parked' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">
-                        ${car.status}
-                    </span>
-                    <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
-                </div>
-                <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
-            </div>
-        </div>
-    `).join('');
+function openScannerModal() {
+    console.log("1. Abrindo o modal...");
+    scannerModal.classList.remove('hidden');
+    switchToScannerView(); // Define a visão do scanner como padrão
 }
 
+function closeScannerModal() {
+    console.log("Fechando o modal e parando o scanner...");
+    stopScanner();
+    scannerModal.classList.add('hidden');
+}
 
-/**
- * Configura todos os event listeners da página.
- */
-function setupEventListeners() {
-    scanBtn.addEventListener('click', startScanner);
-    closeScannerBtn.addEventListener('click', stopScanner);
-    
-    locationBtn.addEventListener('click', () => {
-        const fixedLat = -25.5247603;
-        const fixedLng = -49.112358;
-        map.flyTo([fixedLat, fixedLng], 15, { animate: true, duration: 1.5 });
+function switchToScannerView() {
+    console.log("2. Mudando para a visão do SCANNER.");
+    manualView.classList.add('hidden');
+    scannerView.classList.remove('hidden');
+    toggleManualBtn.textContent = 'Digitar PJI Manualmente';
+    startScanner(); // Tenta iniciar a câmera
+}
+
+function switchToManualView() {
+    console.log("Mudando para a visão MANUAL.");
+    stopScanner(); // Para a câmera se estiver ativa
+    scannerView.classList.add('hidden');
+    manualView.classList.remove('hidden');
+    toggleManualBtn.textContent = 'Voltar para o Scanner';
+}
+
+function startScanner() {
+    console.log("3. Tentando iniciar a câmera...");
+    if (html5QrCode && html5QrCode.isScanning) {
+        console.log("Scanner já estava ativo.");
+        return;
+    }
+    const formatsToSupport = [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_39 ];
+    html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsToSupport, verbose: false });
+    html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 100 } },
+        processScannedId,
+        () => {}
+    ).catch(err => {
+        console.error("4. FALHA ao iniciar a câmera:", err);
+        showNotification("Câmera não disponível. Use a digitação.", 'error');
+        // Se a câmera falhar, força a mudança para a visão manual
+        switchToManualView();
     });
+}
 
+function stopScanner() {
+    if (html5QrCode && html5QrCode.isScanning) {
+        console.log("Parando a câmera...");
+        html5QrCode.stop().catch(err => console.error("Erro ao parar scanner:", err));
+    }
+}
+
+// --- LÓGICA DE PROCESSAMENTO DE DADOS ---
+
+function processScannedId(decodedText) {
+    processCarId(decodedText.trim());
+}
+
+function handleManualSave() {
+    const carId = manualCarIdInput.value.trim();
+    processCarId(carId);
+    manualCarIdInput.value = '';
+}
+
+async function processCarId(carId) {
+    if (!carId) {
+        showNotification('O PJI do veículo não pode ser vazio.', 'error');
+        return;
+    }
+    if (!/^[0-9]+$/.test(carId)) {
+        showNotification('ID inválido. Por favor, use apenas números.', 'error');
+        return; // Interrompe a execução se for inválido
+    }
+    closeScannerModal();
+    showNotification(`Veículo ${carId} recebido. Verificando...`, 'info');
+    const q = query(carsCollection, where("carId", "==", carId));
+    try {
+        const querySnapshot = await getDocs(q);
+        const position = await getCurrentLocation();
+        if (querySnapshot.empty) {
+            await addDoc(carsCollection, {
+                carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
+            });
+            showNotification(`Novo veículo ${carId} adicionado!`, 'success');
+        } else {
+            const docRef = doc(db, "parkedCars", querySnapshot.docs[0].id);
+            await updateDoc(docRef, {
+                lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
+            });
+            showNotification(`Veículo ${carId} atualizado!`, 'success');
+        }
+    } catch (error) {
+        showNotification("Erro ao processar: " + error.message, 'error');
+    }
+}
+
+// --- CONFIGURAÇÃO DE EVENTOS ---
+
+function setupEventListeners() {
+    scanBtn.addEventListener('click', openScannerModal);
+    closeModalBtn.addEventListener('click', closeScannerModal);
+    // Alterna entre as visões do scanner e manual
+    toggleManualBtn.addEventListener('click', () => {
+        if (scannerView.classList.contains('hidden')) {
+            switchToScannerView();
+        } else {
+            switchToManualView();
+        }
+    });
+    manualSaveBtn.addEventListener('click', handleManualSave);
+    
+    // Listeners que não mudaram
+    locationBtn.addEventListener('click', () => {
+        map.flyTo([-25.5247603, -49.112358], 15, { animate: true, duration: 1.5 });
+    });
     filterBtn.addEventListener('click', handleFilterClick);
     refreshBtn.addEventListener('click', handleRefreshClick);
     searchInput.addEventListener('input', applyFiltersAndSearch);
-
-    // ALTERAÇÃO 2: O Event Listener agora escuta cliques no card inteiro.
     carListDiv.addEventListener('click', (e) => {
-        // Encontra o elemento pai mais próximo com a classe 'car-item'
         const carItem = e.target.closest('.car-item');
-        if (carItem) {
-            // Pega o ID do dataset do card
-            const docId = carItem.dataset.id;
-            focusOnCar(docId);
-        }
+        if (carItem) focusOnCar(carItem.dataset.id);
     });
 }
 
-
-// --- O RESTANTE DAS FUNÇÕES PERMANECE IGUAL ---
-// Nenhuma alteração é necessária nas funções abaixo.
+// --- FUNÇÕES DE AJUDA E UI ---
 
 function initMap() {
-    map = L.map(mapElement, {
-        zoomControl: false,
-        tap: false
-    }).setView([-25.4411, -49.2731], 15);
+    map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
@@ -109,66 +166,9 @@ function initMap() {
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 }
 
-function startScanner() {
-    scannerModal.style.display = 'flex';
-    const formatsToSupport = [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_39 ];
-    html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsToSupport, verbose: false });
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: (w, h) => ({ width: w * 0.8, height: h * 0.4 }) },
-        onScanSuccess,
-        () => {}
-    ).catch(err => {
-        showNotification("Erro ao acessar a câmera.", 'error');
-        stopScanner();
-    });
-}
-
-function stopScanner() {
-    if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().finally(() => {
-            scannerModal.style.display = 'none';
-        });
-    } else {
-        scannerModal.style.display = 'none';
-    }
-}
-
-async function onScanSuccess(decodedText) {
-    stopScanner();
-    const carId = decodedText.trim();
-    if (!carId) {
-        showNotification('Código de barras inválido.', 'error');
-        return;
-    }
-    showNotification(`Veículo ${carId} escaneado. Verificando no pátio...`, 'info');
-    const q = query(carsCollection, where("carId", "==", carId));
-    try {
-        const querySnapshot = await getDocs(q);
-        const position = await getCurrentLocation();
-        if (querySnapshot.empty) {
-            await addDoc(carsCollection, {
-                carId: carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
-            });
-            showNotification(`Novo veículo ${carId} adicionado ao pátio!`, 'success');
-        } else {
-            const existingDoc = querySnapshot.docs[0];
-            const docRef = doc(db, "parkedCars", existingDoc.id);
-            await updateDoc(docRef, {
-                lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
-            });
-            showNotification(`Localização do veículo ${carId} atualizada!`, 'success');
-        }
-    } catch (error) {
-        showNotification("Erro ao processar: " + error.message, 'error');
-    }
-}
-
 function getCurrentLocation() {
     return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            return reject(new Error("Geolocalização não suportada."));
-        }
+        if (!navigator.geolocation) return reject(new Error("Geolocalização não suportada."));
         navigator.geolocation.getCurrentPosition(
             position => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
             () => reject(new Error("Não foi possível obter a localização.")),
@@ -195,11 +195,27 @@ function updateMarkers(cars) {
     Object.values(markers).forEach(marker => marker.remove());
     markers = {};
     cars.forEach(car => {
-        const marker = L.marker([car.lat, car.lng])
-            .addTo(map)
-            .bindPopup(`<div class="font-bold">${car.carId}</div>`);
+        const marker = L.marker([car.lat, car.lng]).addTo(map).bindPopup(`<div class="font-bold">${car.carId}</div>`);
         markers[car.id] = marker;
     });
+}
+
+function updateCarList(cars) {
+    if (cars.length === 0) {
+        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
+        return;
+    }
+    carListDiv.innerHTML = cars.map(car => `
+        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}">
+            <div class="flex-1">
+                <div class="flex items-center justify-between">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${car.status === 'parked' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">${car.status}</span>
+                    <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
+                </div>
+                <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
+            </div>
+        </div>
+    `).join('');
 }
 
 function timeAgo(date) {
@@ -227,21 +243,14 @@ function applyFiltersAndSearch() {
     }
     const searchTerm = searchInput.value.toLowerCase();
     if (searchTerm) {
-        processedCars = processedCars.filter(car => 
-            car.carId.toLowerCase().includes(searchTerm)
-        );
+        processedCars = processedCars.filter(car => car.carId.toLowerCase().includes(searchTerm));
     }
     updateCarList(processedCars);
 }
 
 function handleFilterClick() {
-    if (currentFilter === 'all') {
-        currentFilter = 'parked';
-        showNotification('Filtrando por: Estacionados', 'info');
-    } else {
-        currentFilter = 'all';
-        showNotification('Mostrando todos os veículos', 'info');
-    }
+    currentFilter = (currentFilter === 'all') ? 'parked' : 'all';
+    showNotification(currentFilter === 'parked' ? 'Filtrando por: Estacionados' : 'Mostrando todos os veículos', 'info');
     applyFiltersAndSearch();
 }
 

@@ -56,21 +56,43 @@
         </svg>
     </button>
 
-    <div id="scanner-modal">
-        <div class="w-full max-w-md relative">
-            <div class="text-center mb-4">
-                <h3 class="text-xl font-bold text-white">Escaneie o Código de Barras</h3>
-                <p class="text-gray-300 mt-1">Aponte para o código do veículo</p>
+    <div id="scanner-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+
+        <div class="absolute inset-0 bg-black bg-opacity-50"></div>
+
+        <div class="w-full max-w-md bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
+
+            <div id="scanner-view">
+                <div class="text-center mb-4">
+                    <h3 class="text-xl font-bold">Escaneie o PJI</h3>
+                    <p class="text-gray-600 mt-1">Aponte a câmera para o código de barras</p>
+                </div>
+                <div class="relative">
+                    <div id="reader" class="rounded-lg overflow-hidden border-2 border-gray-200"></div>
+                    <div class="scanner-overlay"></div>
+                </div>
             </div>
-            <div class="relative">
-                <div id="reader" class="rounded-lg overflow-hidden"></div>
-                <div class="scanner-overlay"></div>
-            </div>
-            <div class="mt-6 flex justify-center">
-                <button id="close-scanner-btn" class="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors z-10001">
-                    Cancelar
+
+            <div id="manual-view" class="hidden">
+                <div class="text-center mb-4">
+                    <h3 class="text-xl font-bold">Entrada Manual</h3>
+                    <p class="text-gray-600 mt-1">Digite o PJI do veículo</p>
+                </div>
+                <input type="text" inputmode="numeric" pattern="[0-9]*" id="manual-car-id" class="w-full p-4 rounded-lg border-2 bg-gray-100 border-gray-300 text-gray-900 text-center font-mono text-xl tracking-widest focus:border-blue-500 focus:ring-blue-500" placeholder="Apenas números">
+                <button id="manual-save-btn" class="w-full mt-3 bg-green-600 text-white p-3 rounded-lg font-semibold hover:bg-green-700 transition-colors">
+                    Salvar PJI
                 </button>
             </div>
+
+            <div class="mt-6 flex flex-col space-y-2">
+                <button id="toggle-manual-btn" class="w-full px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors">
+                    Digitar PJI Manualmente
+                </button>
+                <button id="close-modal-btn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors">
+                    Fechar
+                </button>
+            </div>
+
         </div>
     </div>
     

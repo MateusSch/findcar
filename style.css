@@ -5,6 +5,9 @@ html, body {
     overflow: hidden;
     touch-action: manipulation;
 }
+.hidden {
+    display: none !important;
+}
 #app-container {
     display: flex;
     flex-direction: column;
@@ -36,7 +39,6 @@ html, body {
     align-items: center;
     justify-content: center;
     z-index: 10000;
-    display: none; /* Inicia oculto por padrão */
 }
 .scanner-overlay {
     position: absolute;
