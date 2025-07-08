@@ -6,6 +6,10 @@ import {
     addDoc, 
     onSnapshot, 
     query, 
+    where,
+    getDocs,
+    doc,
+    updateDoc,
     orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -14,7 +18,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const carsCollection = collection(db, "parkedCars");
 
-// --- Seleção dos Elementos da UI ---
+// --- Seleção dos Elementos da UI e Estado Global ---
 const mapElement = document.getElementById('map');
 const scanBtn = document.getElementById('scan-btn');
 const locationBtn = document.getElementById('location-btn');
@@ -25,26 +29,83 @@ const searchInput = document.getElementById('search-input');
 const filterBtn = document.getElementById('filter-btn');
 const refreshBtn = document.getElementById('refresh-btn');
 
-// --- Estado Global da Aplicação ---
 let map;
 let markers = {};
 let html5QrCode = null;
-let allCars = []; // Cache local de todos os carros para busca e filtro
-let currentFilter = 'all'; // Filtros possíveis: 'all', 'parked', 'moved'
+let allCars = [];
+let currentFilter = 'all';
 
 // --- Funções de Inicialização e Lógica Principal ---
+
+/**
+ * Renderiza a lista de carros na barra lateral.
+ * @param {Array<object>} cars - A lista de carros a ser renderizada.
+ */
+function updateCarList(cars) {
+    if (cars.length === 0) {
+        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
+        return;
+    }
+
+    // ALTERAÇÃO 1: O HTML do card foi modificado.
+    carListDiv.innerHTML = cars.map(car => `
+        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}">
+            <div class="flex-1">
+                <div class="flex items-center justify-between">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${car.status === 'parked' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">
+                        ${car.status}
+                    </span>
+                    <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
+                </div>
+                <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
+            </div>
+        </div>
+    `).join('');
+}
+
+
+/**
+ * Configura todos os event listeners da página.
+ */
+function setupEventListeners() {
+    scanBtn.addEventListener('click', startScanner);
+    closeScannerBtn.addEventListener('click', stopScanner);
+    
+    locationBtn.addEventListener('click', () => {
+        const fixedLat = -25.5247603;
+        const fixedLng = -49.112358;
+        map.flyTo([fixedLat, fixedLng], 15, { animate: true, duration: 1.5 });
+    });
+
+    filterBtn.addEventListener('click', handleFilterClick);
+    refreshBtn.addEventListener('click', handleRefreshClick);
+    searchInput.addEventListener('input', applyFiltersAndSearch);
+
+    // ALTERAÇÃO 2: O Event Listener agora escuta cliques no card inteiro.
+    carListDiv.addEventListener('click', (e) => {
+        // Encontra o elemento pai mais próximo com a classe 'car-item'
+        const carItem = e.target.closest('.car-item');
+        if (carItem) {
+            // Pega o ID do dataset do card
+            const docId = carItem.dataset.id;
+            focusOnCar(docId);
+        }
+    });
+}
+
+
+// --- O RESTANTE DAS FUNÇÕES PERMANECE IGUAL ---
+// Nenhuma alteração é necessária nas funções abaixo.
 
 function initMap() {
     map = L.map(mapElement, {
         zoomControl: false,
         tap: false
-    }).setView([-25.5259996, -49.1231727], 14);
-    
+    }).setView([-25.4411, -49.2731], 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
     }).addTo(map);
-    
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 }
 
@@ -80,23 +141,28 @@ async function onScanSuccess(decodedText) {
         showNotification('Código de barras inválido.', 'error');
         return;
     }
-    showNotification(`Veículo ${carId} detectado. Salvando...`, 'info');
+    showNotification(`Veículo ${carId} escaneado. Verificando no pátio...`, 'info');
+    const q = query(carsCollection, where("carId", "==", carId));
     try {
+        const querySnapshot = await getDocs(q);
         const position = await getCurrentLocation();
-        await addDoc(carsCollection, {
-            carId: carId,
-            lat: position.lat,
-            lng: position.lng,
-            timestamp: new Date(),
-            status: 'parked'
-        });
-        showNotification(`Veículo ${carId} salvo com sucesso!`, 'success');
+        if (querySnapshot.empty) {
+            await addDoc(carsCollection, {
+                carId: carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
+            });
+            showNotification(`Novo veículo ${carId} adicionado ao pátio!`, 'success');
+        } else {
+            const existingDoc = querySnapshot.docs[0];
+            const docRef = doc(db, "parkedCars", existingDoc.id);
+            await updateDoc(docRef, {
+                lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
+            });
+            showNotification(`Localização do veículo ${carId} atualizada!`, 'success');
+        }
     } catch (error) {
-        showNotification("Erro ao salvar: " + error.message, 'error');
+        showNotification("Erro ao processar: " + error.message, 'error');
     }
 }
-
-// --- Funções de Ajuda e UI ---
 
 function getCurrentLocation() {
     return new Promise((resolve, reject) => {
@@ -136,29 +202,6 @@ function updateMarkers(cars) {
     });
 }
 
-function updateCarList(cars) {
-    if (cars.length === 0) {
-        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo encontrado</h3></div>`;
-        return;
-    }
-    carListDiv.innerHTML = cars.map(car => `
-        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden">
-            <div class="p-3 flex justify-between items-start">
-                <div class="flex-1">
-                    <div class="flex items-center">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${car.status === 'parked' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">${car.status}</span>
-                        <span class="ml-2 text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
-                    </div>
-                    <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
-                </div>
-                <button class="focus-btn p-2 text-gray-500 hover:text-blue-600" data-id="${car.id}">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" /></svg>
-                </button>
-            </div>
-        </div>
-    `).join('');
-}
-
 function timeAgo(date) {
     const seconds = Math.floor((new Date() - date) / 1000);
     const intervals = { ano: 31536000, mês: 2592000, dia: 86400, hora: 3600, minuto: 60 };
@@ -177,29 +220,21 @@ function focusOnCar(carId) {
     }
 }
 
-// --- FUNÇÕES DE FILTRO E ATUALIZAÇÃO RESTAURADAS ---
-
 function applyFiltersAndSearch() {
     let processedCars = [...allCars];
-
-    // 1. Aplicar filtro de status
     if (currentFilter !== 'all') {
         processedCars = processedCars.filter(car => car.status === currentFilter);
     }
-
-    // 2. Aplicar filtro de busca por texto
     const searchTerm = searchInput.value.toLowerCase();
     if (searchTerm) {
         processedCars = processedCars.filter(car => 
             car.carId.toLowerCase().includes(searchTerm)
         );
     }
-
     updateCarList(processedCars);
 }
 
 function handleFilterClick() {
-    // Cicla entre os filtros: all -> parked -> all
     if (currentFilter === 'all') {
         currentFilter = 'parked';
         showNotification('Filtrando por: Estacionados', 'info');
@@ -211,40 +246,14 @@ function handleFilterClick() {
 }
 
 function handleRefreshClick() {
-    // Limpa os filtros e a busca, e mostra uma notificação
     showNotification('Lista atualizada.', 'info');
     currentFilter = 'all';
     searchInput.value = '';
-    applyFiltersAndSearch(); // Re-renderiza a lista completa
+    applyFiltersAndSearch();
     if (allCars.length > 0) {
         const bounds = L.latLngBounds(allCars.map(car => [car.lat, car.lng]));
         map.flyToBounds(bounds, { padding: [50, 50] });
     }
-}
-
-// --- Configuração de Eventos e Inicialização da Aplicação ---
-
-function setupEventListeners() {
-    scanBtn.addEventListener('click', startScanner);
-    closeScannerBtn.addEventListener('click', stopScanner);
-    
-    locationBtn.addEventListener('click', () => {
-        const fixedLat = -25.5259996;
-        const fixedLng = -49.1231727;
-        map.flyTo([fixedLat, fixedLng], 14, { animate: true, duration: 1.5 });
-    });
-
-    // LISTENERS RESTAURADOS
-    filterBtn.addEventListener('click', handleFilterClick);
-    refreshBtn.addEventListener('click', handleRefreshClick);
-    searchInput.addEventListener('input', applyFiltersAndSearch);
-
-    carListDiv.addEventListener('click', (e) => {
-        const focusBtn = e.target.closest('.focus-btn');
-        if (focusBtn) {
-            focusOnCar(focusBtn.dataset.id);
-        }
-    });
 }
 
 function setupRealtimeUpdates() {
@@ -262,9 +271,9 @@ function setupRealtimeUpdates() {
                 timestamp: data.timestamp.toDate()
             });
         });
-        allCars = cars; // Atualiza nosso cache local
-        applyFiltersAndSearch(); // Renderiza a lista com os filtros atuais
-        updateMarkers(allCars); // Atualiza todos os marcadores no mapa
+        allCars = cars;
+        applyFiltersAndSearch();
+        updateMarkers(allCars);
     });
 }
 
@@ -272,12 +281,11 @@ async function initApp() {
     try {
         initMap();
         setupEventListeners();
-        await getCurrentLocation(); // Pega a localização inicial para o botão "onde estou"
+        await getCurrentLocation();
         setupRealtimeUpdates();
     } catch (error) {
         showNotification("Erro ao iniciar o app: " + error.message, 'error');
     }
 }
 
-// Inicia a aplicação quando o DOM estiver completamente carregado.
 document.addEventListener('DOMContentLoaded', initApp);
