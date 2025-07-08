@@ -1,4 +1,6 @@
-// Importa as funções do Firebase
+// =================================================================
+// 1. IMPORTS E CONFIGURAÇÃO INICIAL
+// =================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, addDoc, onSnapshot, query, where, getDocs, doc, updateDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -6,9 +8,20 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const carsCollection = collection(db, "parkedCars");
 
-// --- Seleção dos Elementos da UI ---
+// =================================================================
+// 2. SELEÇÃO DE ELEMENTOS DA UI (DOM)
+// =================================================================
 const mapElement = document.getElementById('map');
+const carListContainer = document.getElementById('car-list-container');
+const carListDiv = document.getElementById('car-list');
+const defectDetailsContainer = document.getElementById('defect-details-container');
+const defectInfoModal = document.getElementById('defect-info-modal');
+const defectModalOverlay = document.getElementById('defect-modal-overlay');
+const defectModalTitle = document.getElementById('defect-modal-title');
+const defectModalContent = document.getElementById('defect-modal-content');
+const closeDefectModalBtn = document.getElementById('close-defect-modal-btn');
 const scanBtn = document.getElementById('scan-btn');
+const locationBtn = document.getElementById('location-btn');
 const scannerModal = document.getElementById('scanner-modal');
 const scannerView = document.getElementById('scanner-view');
 const manualView = document.getElementById('manual-view');
@@ -16,110 +29,197 @@ const toggleManualBtn = document.getElementById('toggle-manual-btn');
 const closeModalBtn = document.getElementById('close-modal-btn');
 const manualCarIdInput = document.getElementById('manual-car-id');
 const manualSaveBtn = document.getElementById('manual-save-btn');
-const locationBtn = document.getElementById('location-btn');
-const carListDiv = document.getElementById('car-list');
 const searchInput = document.getElementById('search-input');
 const filterBtn = document.getElementById('filter-btn');
 const refreshBtn = document.getElementById('refresh-btn');
 
-// --- Estado Global ---
+// =================================================================
+// 3. ESTADO GLOBAL DA APLICAÇÃO
+// =================================================================
 let map, markers = {}, html5QrCode = null, allCars = [], currentFilter = 'all';
 
-// --- LÓGICA DO MODAL (REVISADA) ---
+// =================================================================
+// 4. DEFINIÇÃO DE TODAS AS FUNÇÕES
+// =================================================================
 
+// --- Funções do Mapa ---
+function initMap() {
+    map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+}
+
+function updateMarkers(cars) {
+    Object.values(markers).forEach(marker => marker.remove());
+    markers = {};
+    cars.forEach(car => {
+        const marker = L.marker([car.lat, car.lng]).addTo(map).bindPopup(`<div class="font-bold">${car.carId}</div>`);
+        marker.on('click', () => {
+            focusOnCar(car.id);
+            fetchAndShowDefects(car.carId);
+        });
+        markers[car.id] = marker;
+    });
+}
+
+function focusOnCar(docId) {
+    if (markers[docId]) {
+        const marker = markers[docId];
+        map.flyTo(marker.getLatLng(), 18, { animate: true, duration: 1 });
+        marker.openPopup();
+    }
+}
+
+// --- Funções do Scanner e Modal de Scan ---
 function openScannerModal() {
-    console.log("1. Abrindo o modal...");
     scannerModal.classList.remove('hidden');
-    switchToScannerView(); // Define a visão do scanner como padrão
+    switchToScannerView();
 }
 
 function closeScannerModal() {
-    console.log("Fechando o modal e parando o scanner...");
     stopScanner();
     scannerModal.classList.add('hidden');
 }
 
 function switchToScannerView() {
-    console.log("2. Mudando para a visão do SCANNER.");
     manualView.classList.add('hidden');
     scannerView.classList.remove('hidden');
-    toggleManualBtn.textContent = 'Digitar PJI Manualmente';
-    startScanner(); // Tenta iniciar a câmera
+    toggleManualBtn.textContent = 'Digitar Código Manualmente';
+    startScanner();
 }
 
 function switchToManualView() {
-    console.log("Mudando para a visão MANUAL.");
-    stopScanner(); // Para a câmera se estiver ativa
+    stopScanner();
     scannerView.classList.add('hidden');
     manualView.classList.remove('hidden');
     toggleManualBtn.textContent = 'Voltar para o Scanner';
 }
 
-function startScanner() {
-    console.log("3. Tentando iniciar a câmera...");
-    if (html5QrCode && html5QrCode.isScanning) {
-        console.log("Scanner já estava ativo.");
-        return;
-    }
-    const formatsToSupport = [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_39 ];
-    html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formatsToSupport, verbose: false });
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 100 } },
-        processScannedId,
-        () => {}
-    ).catch(err => {
-        console.error("4. FALHA ao iniciar a câmera:", err);
-        showNotification("Câmera não disponível. Use a digitação.", 'error');
-        // Se a câmera falhar, força a mudança para a visão manual
+function toggleModalView() {
+    if (manualView.classList.contains('hidden')) {
         switchToManualView();
-    });
+    } else {
+        switchToScannerView();
+    }
+}
+
+function startScanner() {
+    if (html5QrCode && html5QrCode.isScanning) return;
+    
+    try {
+        const formatsToSupport = [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_39 ];
+        html5QrCode = new Html5Qrcode("reader", { formatsToSupport, verbose: false });
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: { width: 250, height: 100 } },
+            processCarId, 
+            () => {}
+        ).catch(error => {
+            showNotification("Câmera não disponível. Use a digitação.", 'error');
+            switchToManualView();
+        });
+    } catch (error) {
+        showNotification("Erro ao iniciar o scanner", 'error');
+        switchToManualView();
+    }
 }
 
 function stopScanner() {
     if (html5QrCode && html5QrCode.isScanning) {
-        console.log("Parando a câmera...");
         html5QrCode.stop().catch(err => console.error("Erro ao parar scanner:", err));
     }
 }
 
-// --- LÓGICA DE PROCESSAMENTO DE DADOS ---
+// --- Funções de Defeitos e Detalhes ---
+async function fetchAndShowDefects(carId) {
+    const carToFocus = allCars.find(c => c.carId === carId);
+    if (carToFocus) {
+        focusOnCar(carToFocus.id);
+    }
+    scanBtn.classList.add('hidden');
+    
+    defectDetailsContainer.innerHTML = `<div class="text-center py-10"><div class="w-8 h-8 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto"></div><p class="mt-3">Buscando defeitos para ${carId}...</p></div>`;
+    carListContainer.classList.add('hidden');
+    defectDetailsContainer.classList.remove('hidden');
 
-function processScannedId(decodedText) {
-    processCarId(decodedText.trim());
+    try {
+        const apiUrl = `http://psfweb-uas.renault.br/PSFV/NEO/consultations/vehicules/pji/${carId}/qualite`;
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`Falha na API: ${response.statusText}`);
+        const data = await response.json();
+        const openDefects = (data.generalites?.plistGret || []).filter(d => d.dateReprise === null);
+        renderDefectList(carId, openDefects);
+    } catch (error) {
+        console.error("Erro ao buscar defeitos:", error);
+        defectDetailsContainer.innerHTML = `<div class="text-center py-10"><p class="text-red-600 font-semibold">Não foi possível buscar os defeitos.</p><p class="text-sm text-gray-500 mt-2">${error.message}</p><button id="back-to-list-btn" class="mt-4 px-4 py-2 bg-gray-300 rounded">Voltar para a Lista</button></div>`;
+    }
 }
 
+function renderDefectList(carId, defects) {
+    const defectListHTML = defects.map(defect => `
+        <div class="defect-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-yellow-50 transition-colors cursor-pointer" data-details='${JSON.stringify(defect)}'>
+            <div class="flex-1">
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-red-700">Elemento: ${defect.codeElement}, Incidente: ${defect.codeIncident}</span>
+                    <span class="text-xs text-gray-500">${new Date(defect.dateConstat).toLocaleDateString('pt-BR')}</span>
+                </div>
+                <p class="mt-1 text-sm text-gray-600">Local: ${defect.localisation.trim()}</p>
+            </div>
+        </div>
+    `).join('');
+
+    defectDetailsContainer.innerHTML = `
+        <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
+            <div class="flex items-center">
+                <button id="back-to-list-btn" class="p-2 mr-2 rounded-full hover:bg-gray-200">
+                    <svg class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                </button>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">${carId}</h2>
+                    <p class="text-sm font-semibold ${defects.length > 0 ? 'text-red-600' : 'text-green-600'}">${defects.length} defeito(s) em aberto</p>
+                </div>
+            </div>
+        </div>
+        <div class="p-2 space-y-2">${defects.length > 0 ? defectListHTML : '<p class="text-center p-4 text-gray-600">Nenhum defeito em aberto para este veículo.</p>'}</div>
+    `;
+}
+
+function showDefectDetailsModal(defectData) {
+    const details = defectData.pgretDetails;
+    defectModalTitle.textContent = `Defeito: ${defectData.codeElement} / ${defectData.codeIncident}`;
+    defectModalContent.innerHTML = `
+        <p><strong class="w-32 inline-block">Elemento:</strong> ${details.libelleElement.trim()}</p>
+        <p><strong class="w-32 inline-block">Incidente:</strong> ${details.libelleIncident.trim()}</p>
+        <p><strong class="w-32 inline-block">Localização:</strong> ${defectData.localisation.trim()}</p>
+        <p><strong class="w-32 inline-block">Data Constat.:</strong> ${new Date(defectData.dateConstat).toLocaleString('pt-BR')}</p>
+        <p><strong class="w-32 inline-block">Retoque:</strong> ${details.libelleRetouche.trim()}</p>
+        <p><strong class="w-32 inline-block">Comentário:</strong> ${details.commentaire.trim() || 'N/A'}</p>`;
+    defectInfoModal.classList.remove('hidden');
+}
+
+// --- Lógica de Processamento de Dados ---
 function handleManualSave() {
-    const carId = manualCarIdInput.value.trim();
-    processCarId(carId);
-    manualCarIdInput.value = '';
+    processCarId(manualCarIdInput.value.trim());
 }
 
 async function processCarId(carId) {
-    if (!carId) {
-        showNotification('O PJI do veículo não pode ser vazio.', 'error');
-        return;
-    }
-    if (!/^[0-9]+$/.test(carId)) {
-        showNotification('ID inválido. Por favor, use apenas números.', 'error');
-        return; // Interrompe a execução se for inválido
-    }
+    if (!carId) return showNotification('O PJI do veículo não pode ser vazio.', 'error');
+    if (!/^[0-9]+$/.test(carId)) return showNotification('PJI inválido. Use apenas números.', 'error');
+    
     closeScannerModal();
-    showNotification(`Veículo ${carId} recebido. Verificando...`, 'info');
-    const q = query(carsCollection, where("carId", "==", carId));
+    showNotification(`Veículo ${carId} recebido...`, 'info');
+
     try {
+        const q = query(carsCollection, where("carId", "==", carId));
         const querySnapshot = await getDocs(q);
         const position = await getCurrentLocation();
+        
         if (querySnapshot.empty) {
-            await addDoc(carsCollection, {
-                carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
-            });
+            await addDoc(carsCollection, { carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
             showNotification(`Novo veículo ${carId} adicionado!`, 'success');
         } else {
             const docRef = doc(db, "parkedCars", querySnapshot.docs[0].id);
-            await updateDoc(docRef, {
-                lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked'
-            });
+            await updateDoc(docRef, { lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
             showNotification(`Veículo ${carId} atualizado!`, 'success');
         }
     } catch (error) {
@@ -127,51 +227,14 @@ async function processCarId(carId) {
     }
 }
 
-// --- CONFIGURAÇÃO DE EVENTOS ---
-
-function setupEventListeners() {
-    scanBtn.addEventListener('click', openScannerModal);
-    closeModalBtn.addEventListener('click', closeScannerModal);
-    // Alterna entre as visões do scanner e manual
-    toggleManualBtn.addEventListener('click', () => {
-        if (scannerView.classList.contains('hidden')) {
-            switchToScannerView();
-        } else {
-            switchToManualView();
-        }
-    });
-    manualSaveBtn.addEventListener('click', handleManualSave);
-    
-    // Listeners que não mudaram
-    locationBtn.addEventListener('click', () => {
-        map.flyTo([-25.5247603, -49.112358], 15, { animate: true, duration: 1.5 });
-    });
-    filterBtn.addEventListener('click', handleFilterClick);
-    refreshBtn.addEventListener('click', handleRefreshClick);
-    searchInput.addEventListener('input', applyFiltersAndSearch);
-    carListDiv.addEventListener('click', (e) => {
-        const carItem = e.target.closest('.car-item');
-        if (carItem) focusOnCar(carItem.dataset.id);
-    });
-}
-
-// --- FUNÇÕES DE AJUDA E UI ---
-
-function initMap() {
-    map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19
-    }).addTo(map);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-}
-
+// --- Funções de UI Auxiliares ---
 function getCurrentLocation() {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) return reject(new Error("Geolocalização não suportada."));
+        
         navigator.geolocation.getCurrentPosition(
-            position => resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
-            () => reject(new Error("Não foi possível obter a localização.")),
+            pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            error => reject(new Error("Não foi possível obter a localização.")),
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     });
@@ -182,7 +245,7 @@ function showNotification(message, type = 'info') {
     const existing = document.querySelector('.notification');
     if (existing) existing.remove();
     const notification = document.createElement('div');
-    notification.className = `fixed top-4 right-4 z-50 text-white px-4 py-3 rounded-lg shadow-lg ${colors[type]} notification animate-fadeIn`;
+    notification.className = `fixed top-4 right-4 z-50 text-white px-4 py-3 rounded-lg shadow-lg ${colors[type]} animate-fadeIn`;
     notification.textContent = message;
     document.body.appendChild(notification);
     setTimeout(() => {
@@ -191,22 +254,13 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
-function updateMarkers(cars) {
-    Object.values(markers).forEach(marker => marker.remove());
-    markers = {};
-    cars.forEach(car => {
-        const marker = L.marker([car.lat, car.lng]).addTo(map).bindPopup(`<div class="font-bold">${car.carId}</div>`);
-        markers[car.id] = marker;
-    });
-}
-
 function updateCarList(cars) {
     if (cars.length === 0) {
         carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
         return;
     }
     carListDiv.innerHTML = cars.map(car => `
-        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}">
+        <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}" data-car-id="${car.carId}">
             <div class="flex-1">
                 <div class="flex items-center justify-between">
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${car.status === 'parked' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">${car.status}</span>
@@ -214,8 +268,7 @@ function updateCarList(cars) {
                 </div>
                 <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
             </div>
-        </div>
-    `).join('');
+        </div>`).join('');
 }
 
 function timeAgo(date) {
@@ -226,14 +279,6 @@ function timeAgo(date) {
         if (interval >= 1) return `há ${interval} ${unit}${interval > 1 ? 's' : ''}`;
     }
     return 'agora mesmo';
-}
-
-function focusOnCar(carId) {
-    if (markers[carId]) {
-        const marker = markers[carId];
-        map.flyTo(marker.getLatLng(), 18, { animate: true, duration: 1 });
-        marker.openPopup();
-    }
 }
 
 function applyFiltersAndSearch() {
@@ -265,23 +310,67 @@ function handleRefreshClick() {
     }
 }
 
+// =================================================================
+// 5. INICIALIZAÇÃO DA APLICAÇÃO
+// =================================================================
+
+function setupEventListeners() {
+    scanBtn.addEventListener('click', openScannerModal);
+    closeModalBtn.addEventListener('click', closeScannerModal);
+    toggleManualBtn.addEventListener('click', toggleModalView);
+    manualSaveBtn.addEventListener('click', handleManualSave);
+    
+    // Coordenadas atualizadas aqui
+    locationBtn.addEventListener('click', () => {
+        const fixedLat = -25.5259996;
+        const fixedLng = -49.1231727;
+        const fixedZoom = 14;
+        map.flyTo([fixedLat, fixedLng], fixedZoom, { animate: true, duration: 1.5 });
+    });
+    
+    filterBtn.addEventListener('click', handleFilterClick);
+    refreshBtn.addEventListener('click', handleRefreshClick);
+    searchInput.addEventListener('input', applyFiltersAndSearch);
+
+    carListDiv.addEventListener('click', (e) => {
+        const carItem = e.target.closest('.car-item');
+        if (carItem) {
+            const carId = carItem.dataset.carId; 
+            if(carId) fetchAndShowDefects(carId);
+        }
+    });
+
+    defectDetailsContainer.addEventListener('click', (e) => {
+        if (e.target.closest('#back-to-list-btn')) {
+            defectDetailsContainer.classList.add('hidden');
+            carListContainer.classList.remove('hidden');
+            scanBtn.classList.remove('hidden');
+        }
+        const defectItem = e.target.closest('.defect-item');
+        if (defectItem) {
+            showDefectDetailsModal(JSON.parse(defectItem.dataset.details));
+        }
+    });
+
+    closeDefectModalBtn.addEventListener('click', () => defectInfoModal.classList.add('hidden'));
+    defectModalOverlay.addEventListener('click', () => defectInfoModal.classList.add('hidden'));
+}
+
 function setupRealtimeUpdates() {
     const q = query(carsCollection, orderBy("timestamp", "desc"));
+    
     onSnapshot(q, (snapshot) => {
-        const cars = [];
-        snapshot.forEach(doc => {
-            const data = doc.data();
-            cars.push({
-                id: doc.id,
-                carId: data.carId,
-                lat: data.lat,
-                lng: data.lng,
-                status: data.status || 'parked',
-                timestamp: data.timestamp.toDate()
-            });
-        });
-        allCars = cars;
+        allCars = snapshot.docs.map(doc => ({
+            id: doc.id,
+            carId: doc.data().carId,
+            lat: doc.data().lat,
+            lng: doc.data().lng,
+            status: doc.data().status,
+            timestamp: doc.data().timestamp.toDate()
+        }));
+        
         applyFiltersAndSearch();
+        // A LINHA ABAIXO ESTAVA FALTANDO, POR ISSO OS MARCADORES NÃO ERAM ATUALIZADOS
         updateMarkers(allCars);
     });
 }
@@ -290,9 +379,18 @@ async function initApp() {
     try {
         initMap();
         setupEventListeners();
-        await getCurrentLocation();
         setupRealtimeUpdates();
+        
+        await getCurrentLocation()
+            .then(position => {
+                map.flyTo([position.lat, position.lng], 15);
+            })
+            .catch(error => {
+                console.log("Usando localização padrão devido a:", error);
+            });
+            
     } catch (error) {
+        console.error("Erro fatal na inicialização:", error);
         showNotification("Erro ao iniciar o app: " + error.message, 'error');
     }
 }
