@@ -130,45 +130,24 @@ function stopScanner() {
     }
 }
 
-// --- Funções de Defeitos e Detalhes ---
-async function fetchAndShowDefects(carId) {
-    const carToFocus = allCars.find(c => c.carId === carId);
-    if (carToFocus) {
-        focusOnCar(carToFocus.id);
+/**
+ * Cria o HTML para o cabeçalho do painel de detalhes do veículo.
+ * @param {string} carId - O ID do carro.
+ * @param {number|null} defectCount - O número de defeitos encontrados, ou null se a busca falhou.
+ * @returns {string} O HTML do cabeçalho.
+ */
+function createDefectPanelHeader(carId, defectCount) {
+    let defectText = '';
+    let textColor = 'text-gray-500';
+
+    if (defectCount !== null) {
+        defectText = `${defectCount} defeito(s) em aberto`;
+        textColor = defectCount > 0 ? 'text-red-600' : 'text-green-600';
+    } else {
+        defectText = 'Consulta de defeitos indisponível';
     }
-    scanBtn.classList.add('hidden');
-    
-    defectDetailsContainer.innerHTML = `<div class="text-center py-10"><div class="w-8 h-8 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto"></div><p class="mt-3">Buscando defeitos para ${carId}...</p></div>`;
-    carListContainer.classList.add('hidden');
-    defectDetailsContainer.classList.remove('hidden');
 
-    try {
-        const apiUrl = `http://psfweb-uas.renault.br/PSFV/NEO/consultations/vehicules/pji/${carId}/qualite`;
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`Falha na API: ${response.statusText}`);
-        const data = await response.json();
-        const openDefects = (data.generalites?.plistGret || []).filter(d => d.dateReprise === null);
-        renderDefectList(carId, openDefects);
-    } catch (error) {
-        console.error("Erro ao buscar defeitos:", error);
-        defectDetailsContainer.innerHTML = `<div class="text-center py-10"><p class="text-red-600 font-semibold">Não foi possível buscar os defeitos.</p><p class="text-sm text-gray-500 mt-2">${error.message}</p><button id="back-to-list-btn" class="mt-4 px-4 py-2 bg-gray-300 rounded">Voltar para a Lista</button></div>`;
-    }
-}
-
-function renderDefectList(carId, defects) {
-    const defectListHTML = defects.map(defect => `
-        <div class="defect-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-yellow-50 transition-colors cursor-pointer" data-details='${JSON.stringify(defect)}'>
-            <div class="flex-1">
-                <div class="flex items-center justify-between">
-                    <span class="font-bold text-red-700">Elemento: ${defect.codeElement}, Incidente: ${defect.codeIncident}</span>
-                    <span class="text-xs text-gray-500">${new Date(defect.dateConstat).toLocaleDateString('pt-BR')}</span>
-                </div>
-                <p class="mt-1 text-sm text-gray-600">Local: ${defect.localisation.trim()}</p>
-            </div>
-        </div>
-    `).join('');
-
-    defectDetailsContainer.innerHTML = `
+    return `
         <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
             <div class="flex items-center">
                 <button id="back-to-list-btn" class="p-2 mr-2 rounded-full hover:bg-gray-200">
@@ -176,11 +155,68 @@ function renderDefectList(carId, defects) {
                 </button>
                 <div>
                     <h2 class="text-xl font-bold text-gray-800">${carId}</h2>
-                    <p class="text-sm font-semibold ${defects.length > 0 ? 'text-red-600' : 'text-green-600'}">${defects.length} defeito(s) em aberto</p>
+                    <p class="text-sm font-semibold ${textColor}">${defectText}</p>
+                    <a href="http://psfweb-uas.renault.br/PSFV/NEO/#/consultations/vehicules/pji/${carId}/defauts-gret" 
+                       target="_blank" rel="noopener noreferrer"
+                       class="mt-2 inline-block bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors">
+                        Ver Defeitos GRET
+                    </a>
                 </div>
             </div>
         </div>
-        <div class="p-2 space-y-2">${defects.length > 0 ? defectListHTML : '<p class="text-center p-4 text-gray-600">Nenhum defeito em aberto para este veículo.</p>'}</div>
+    `;
+}
+
+// --- Funções de Defeitos e Detalhes ---
+async function fetchAndShowDefects(carId) {
+    const carToFocus = allCars.find(c => c.carId === carId);
+    if (carToFocus) {
+        focusOnCar(carToFocus.id);
+    }
+    
+    // Mostra o painel e uma mensagem de carregamento inicial
+    carListContainer.classList.add('hidden');
+    defectDetailsContainer.classList.remove('hidden');
+    defectDetailsContainer.innerHTML = `<div class="text-center py-10"><div class="w-8 h-8 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto"></div><p class="mt-3">Buscando defeitos para ${carId}...</p></div>`;
+    scanBtn.classList.add('hidden');
+
+    try {
+        const apiUrl = `http://psfweb-uas.renault.br/PSFV/NEO/consultations/vehicules/pji/${carId}/qualite`;
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`Falha na API: ${response.statusText}`);
+        
+        const data = await response.json();
+        const openDefects = (data.generalites?.plistGret || []).filter(d => d.dateReprise === null);
+        
+        // Em caso de sucesso, chama a renderDefectList
+        renderDefectList(carId, openDefects);
+
+    } catch (error) {
+        console.error("Erro ao buscar defeitos:", error);
+        
+        // Em caso de falha, gera o cabeçalho e adiciona a mensagem de erro
+        const headerHTML = createDefectPanelHeader(carId, null); // Passa null para o contador de defeitos
+        const errorHTML = `<div class="p-4 text-center text-red-700 bg-red-50 rounded-b-lg">Não foi possível carregar a lista de defeitos.</div>`;
+        defectDetailsContainer.innerHTML = headerHTML + errorHTML;
+    }
+}
+
+function renderDefectList(carId, defects) {
+    // Gera o cabeçalho passando a contagem de defeitos
+    const headerHTML = createDefectPanelHeader(carId, defects.length);
+
+    const defectListHTML = defects.map(defect => `
+        <div class="defect-item bg-white p-3 rounded-lg shadow-sm hover:bg-yellow-50 cursor-pointer" data-details='${JSON.stringify(defect)}'>
+            <p class="font-bold text-red-700">Elemento: ${defect.codeElement}, Incidente: ${defect.codeIncident}</p>
+            <p class="mt-1 text-sm text-gray-600">Local: ${defect.localisation.trim()}</p>
+            <p class="text-sm text-gray-500">Constatado em: ${new Date(defect.dateConstat).toLocaleDateString('pt-BR')}</p>
+        </div>`).join('');
+
+    // Junta o cabeçalho com a lista de defeitos
+    defectDetailsContainer.innerHTML = headerHTML + `
+        <div class="p-2 space-y-2">
+            ${defects.length > 0 ? defectListHTML : '<p class="text-center p-4 text-gray-600">Nenhum defeito em aberto para este veículo.</p>'}
+        </div>
     `;
 }
 
