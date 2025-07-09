@@ -18,25 +18,18 @@
             <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
                 <div class="flex justify-between items-center">
                     <h2 class="text-xl font-bold text-gray-800">Veículos no Pátio</h2>
-                    
                     <div class="flex space-x-2">
                         <button id="filter-btn" title="Alternar Filtro" class="p-2 rounded-full bg-gray-100 hover:bg-gray-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                         </button>
                         <button id="refresh-btn" title="Atualizar Lista" class="p-2 rounded-full bg-gray-100 hover:bg-gray-200">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                         </button>
                     </div>
                 </div>
                 <div class="mt-2 relative">
                     <input type="text" id="search-input" placeholder="Buscar veículo..." class="w-full p-2 pl-10 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 absolute left-3 top-2.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                 </div>
             </div>
             <div id="car-list" class="p-2 space-y-2"></div>
@@ -44,61 +37,54 @@
         
         <div id="defect-details-container" class="hidden flex-grow overflow-y-auto bg-slate-50"></div>
     </div>
+    
+    <button id="change-status-btn" class="hidden absolute top-4 left-4 z-[1000] bg-yellow-400 text-yellow-900 px-4 py-2 rounded-lg shadow-lg font-semibold hover:bg-yellow-500 transition-all">Mudar Status</button>
+    <button id="scan-btn" class="fixed bottom-6 right-6 bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 transform hover:scale-105 z-[1000]"><svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg></button>
+    <button id="location-btn" class="location-btn"><svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
 
     <div id="defect-info-modal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center">
         <div class="absolute inset-0 bg-black bg-opacity-60" id="defect-modal-overlay"></div>
         <div class="w-full max-w-lg bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
             <h3 id="defect-modal-title" class="text-2xl font-bold border-b pb-2 mb-4">Detalhes do Defeito</h3>
             <div id="defect-modal-content" class="space-y-2 max-h-[60vh] overflow-y-auto"></div>
-            <button id="close-defect-modal-btn" class="w-full mt-6 bg-gray-700 text-white p-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors">
-                Fechar
-            </button>
+            <button id="close-defect-modal-btn" class="w-full mt-6 bg-gray-700 text-white p-3 rounded-lg font-semibold hover:bg-gray-800 transition-colors">Fechar</button>
         </div>
     </div>
-
-    <button id="scan-btn" class="fixed bottom-6 right-6 bg-blue-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center text-3xl hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 transform hover:scale-105 z-20">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-        </svg>
-    </button>
     
-    <button id="location-btn" class="location-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-        </svg>
-    </button>
-
-    <div id="scanner-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center">
+    <div id="scanner-modal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center">
         <div class="absolute inset-0 bg-black bg-opacity-50"></div>
         <div class="w-full max-w-md bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
             <div id="scanner-view">
-                <div class="text-center mb-4">
-                    <h3 class="text-xl font-bold">Escaneie o PJI</h3>
-                    <p class="text-gray-600 mt-1">Aponte a câmera para o código de barras</p>
-                </div>
-                <div class="relative">
-                    <div id="reader" class="rounded-lg overflow-hidden border-2 border-gray-200"></div>
-                    <div class="scanner-overlay"></div>
-                </div>
+                <div class="text-center mb-4"><h3 class="text-xl font-bold">Escaneie o Código</h3><p class="text-gray-600 mt-1">Aponte a câmera para o código de barras</p></div>
+                <div class="relative"><div id="reader" class="rounded-lg overflow-hidden border-2 border-gray-200"></div><div class="scanner-overlay"></div></div>
             </div>
             <div id="manual-view" class="hidden">
-                <div class="text-center mb-4">
-                    <h3 class="text-xl font-bold">Entrada Manual</h3>
-                    <p class="text-gray-600 mt-1">Digite o PJI do veículo</p>
-                </div>
-                <input type="text" inputmode="numeric" pattern="[0-9]*" id="manual-car-id" class="w-full p-4 rounded-lg border-2 bg-gray-100 border-gray-300 text-gray-900 text-center font-mono text-xl tracking-widest focus:border-blue-500 focus:ring-blue-500" placeholder="Apenas números">
-                <button id="manual-save-btn" class="w-full mt-3 bg-green-600 text-white p-3 rounded-lg font-semibold hover:bg-green-700 transition-colors">
-                    Salvar PJI
-                </button>
+                <div class="text-center mb-4"><h3 class="text-xl font-bold">Entrada Manual</h3><p class="text-gray-600 mt-1">Digite o ID do veículo</p></div>
+                <input type="text" inputmode="numeric" pattern="[0-9]*" id="manual-car-id" class="w-full p-4 rounded-lg border-2 bg-gray-100 border-gray-300 text-gray-900 text-center font-mono text-xl tracking-widest" placeholder="Apenas números">
+                <button id="manual-save-btn" class="w-full mt-3 bg-green-600 text-white p-3 rounded-lg font-semibold hover:bg-green-700">Salvar ID</button>
             </div>
             <div class="mt-6 flex flex-col space-y-2">
-                <button id="toggle-manual-btn" class="w-full px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition-colors">
-                    Digitar PJI Manualmente
-                </button>
-                <button id="close-modal-btn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors">
-                    Fechar
-                </button>
+                <button id="toggle-manual-btn" class="w-full px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300">Digitar Código Manualmente</button>
+                <button id="close-modal-btn" class="w-full px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700">Fechar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="change-status-modal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center">
+        <div class="absolute inset-0 bg-black bg-opacity-60" id="status-modal-overlay"></div>
+        <div class="w-full max-w-sm bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
+            <h3 class="text-2xl font-bold border-b pb-2 mb-4">Mudar Status do Veículo</h3>
+            <div class="space-y-2">
+                <label for="status-select" class="block text-sm font-medium text-gray-700">Selecione o novo status:</label>
+                <select id="status-select" class="w-full p-3 border border-gray-300 rounded-lg">
+                    <option value="parked">Estacionado</option>
+                    <option value="pre_shipment">Pré-Embarque</option>
+                    <option value="shipped">Embarcado</option>
+                </select>
+            </div>
+            <div class="mt-6 flex items-center space-x-2">
+                 <button id="save-status-btn" class="flex-1 bg-green-600 text-white p-3 rounded-lg font-semibold hover:bg-green-700">Salvar Status</button>
+                 <button id="close-status-modal-btn" class="flex-1 bg-gray-300 text-gray-800 p-3 rounded-lg font-semibold hover:bg-gray-400">Cancelar</button>
             </div>
         </div>
     </div>
