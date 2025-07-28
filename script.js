@@ -2,7 +2,18 @@
 // 1. IMPORTS E CONFIGURAÇÃO INICIAL
 // =================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot, query, where, getDocs, doc, updateDoc, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { 
+    getFirestore, 
+    collection, 
+    addDoc, 
+    onSnapshot, 
+    query, 
+    where,
+    getDocs,
+    doc,
+    updateDoc,
+    orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
@@ -15,11 +26,6 @@ const mapElement = document.getElementById('map');
 const carListContainer = document.getElementById('car-list-container');
 const carListDiv = document.getElementById('car-list');
 const defectDetailsContainer = document.getElementById('defect-details-container');
-const defectInfoModal = document.getElementById('defect-info-modal');
-const defectModalOverlay = document.getElementById('defect-modal-overlay');
-const defectModalTitle = document.getElementById('defect-modal-title');
-const defectModalContent = document.getElementById('defect-modal-content');
-const closeDefectModalBtn = document.getElementById('close-defect-modal-btn');
 const scanBtn = document.getElementById('scan-btn');
 const locationBtn = document.getElementById('location-btn');
 const scannerModal = document.getElementById('scanner-modal');
@@ -38,6 +44,7 @@ const statusModalOverlay = document.getElementById('status-modal-overlay');
 const statusSelect = document.getElementById('status-select');
 const saveStatusBtn = document.getElementById('save-status-btn');
 const closeStatusModalBtn = document.getElementById('close-status-modal-btn');
+// Os elementos do modal de defeitos foram removidos pois não são mais necessários
 
 // =================================================================
 // 3. ESTADO GLOBAL DA APLICAÇÃO
@@ -62,7 +69,7 @@ function updateMarkers(cars) {
     cars.forEach(car => {
         const marker = L.marker([car.lat, car.lng]).addTo(map).bindPopup(`<div class="font-bold">${car.carId}</div>`);
         marker.on('click', () => {
-            fetchAndShowDefects(car);
+            showLookerDashboard(car);
         });
         markers[car.id] = marker;
     });
@@ -141,8 +148,12 @@ function openChangeStatusModal(docId, currentStatus) {
     changeStatusModal.classList.remove('hidden');
 }
 
-// --- Funções de Defeitos e Detalhes ---
-async function fetchAndShowDefects(car) {
+// --- NOVA FUNÇÃO PARA MOSTRAR O DASHBOARD DO LOOKER ---
+/**
+ * Mostra o painel de detalhes com o iframe do Looker.
+ * @param {object} car - O objeto do carro selecionado.
+ */
+function showLookerDashboard(car) {
     focusOnCar(car.id);
     
     changeStatusBtn.classList.remove('hidden');
@@ -152,54 +163,48 @@ async function fetchAndShowDefects(car) {
     carListContainer.classList.add('hidden');
     defectDetailsContainer.classList.remove('hidden');
     scanBtn.classList.add('hidden');
-    defectDetailsContainer.innerHTML = createDefectPanelHeader(car.carId, null) + `<div class="text-center py-10"><div class="w-8 h-8 border-t-4 border-blue-500 border-solid rounded-full animate-spin mx-auto"></div><p class="mt-3">Buscando defeitos para ${car.carId}...</p></div>`;
+    
+    // <<< ADICIONE ESTA LINHA para ativar o novo layout >>>
+    document.getElementById('app-container').classList.add('details-view-active');
 
-    try {
-        const apiUrl = `http://psfweb-uas.renault.br/PSFV/NEO/consultations/vehicules/pji/${car.carId}/qualite`;
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`Falha na API: ${response.statusText}`);
-        const data = await response.json();
-        const openDefects = (data.generalites?.plistGret || []).filter(d => d.dateReprise === null);
-        renderDefectList(car, openDefects);
-    } catch (error) {
-        const headerHTML = createDefectPanelHeader(car.carId, null);
-        const errorHTML = `<div class="p-4 text-center text-red-700 bg-red-50 rounded-b-lg">Não foi possível carregar a lista de defeitos.</div>`;
-        defectDetailsContainer.innerHTML = headerHTML + errorHTML;
-    }
-}
+    const pjiFilter = `65625${car.carId}`;
+    const lookerUrl = `https://renaultssaope.cloud.looker.com/embed/dashboards/115875?PJI=${pjiFilter}&hide_header=true&hide_title=true&allow_login_screen=true`;
 
-function createDefectPanelHeader(carId, defectCount) {
-    let defectText = (defectCount !== null) ? `${defectCount} defeito(s) em aberto` : 'Consulta de defeitos indisponível';
-    let textColor = (defectCount !== null && defectCount > 0) ? 'text-red-600' : 'text-green-600';
-    return `
+    defectDetailsContainer.innerHTML = `
         <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <button id="back-to-list-btn" class="p-2 mr-2 rounded-full hover:bg-gray-200"><svg class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
-                    <div><h2 class="text-xl font-bold text-gray-800">${carId}</h2><p class="text-sm font-semibold ${textColor}">${defectText}</p></div>
+            <div class="flex items-center">
+                <button id="back-to-list-btn" class="p-2 mr-2 rounded-full hover:bg-gray-200">
+                    <svg class="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                </button>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800">${car.carId}</h2>
+                    <p class="text-sm text-gray-600">Dashboard de Qualidade</p>
                 </div>
             </div>
-            <a href="http://psfweb-uas.renault.br/PSFV/NEO/#/consultations/vehicules/pji/${carId}/defauts-gret" target="_blank" rel="noopener noreferrer" class="mt-2 inline-block bg-blue-600 text-white px-3 py-1 rounded-md text-sm font-semibold hover:bg-blue-700">Ver Defeitos GRET</a>
-        </div>`;
+        </div>
+        <div class="w-full flex-grow p-1 bg-gray-200">
+            <iframe
+                src="${lookerUrl}"
+                class="w-full h-full border-0"
+                frameborder="0"
+                allowtransparency>
+            </iframe>
+        </div>
+    `;
 }
 
-function renderDefectList(car, defects) {
-    const headerHTML = createDefectPanelHeader(car.carId, defects.length);
-    const defectListHTML = defects.map(defect => `
-        <div class="defect-item bg-white p-3 rounded-lg shadow-sm hover:bg-yellow-50 cursor-pointer" data-details='${JSON.stringify(defect)}'>
-            <p class="font-bold text-red-700">Elemento: ${defect.codeElement}, Incidente: ${defect.codeIncident}</p>
-            <p class="mt-1 text-sm text-gray-600">Local: ${defect.localisation.trim()}</p>
-            <p class="text-sm text-gray-500">Constatado em: ${new Date(defect.dateConstat).toLocaleDateString('pt-BR')}</p>
-        </div>`).join('');
-    defectDetailsContainer.innerHTML = headerHTML + `<div class="p-2 space-y-2">${defects.length > 0 ? defectListHTML : '<p class="text-center p-4">Nenhum defeito em aberto.</p>'}</div>`;
-}
-
-function showDefectDetailsModal(defectData) {
-    const details = defectData.pgretDetails;
-    defectModalTitle.textContent = `Defeito: ${defectData.codeElement} / ${defectData.codeIncident}`;
-    defectModalContent.innerHTML = `<p><strong class="w-32 inline-block">Elemento:</strong> ${details.libelleElement.trim()}</p><p><strong class="w-32 inline-block">Incidente:</strong> ${details.libelleIncident.trim()}</p><p><strong class="w-32 inline-block">Localização:</strong> ${defectData.localisation.trim()}</p><p><strong class="w-32 inline-block">Data Constat.:</strong> ${new Date(defectData.dateConstat).toLocaleString('pt-BR')}</p><p><strong class="w-32 inline-block">Retoque:</strong> ${details.libelleRetouche.trim()}</p><p><strong class="w-32 inline-block">Comentário:</strong> ${details.commentaire.trim() || 'N/A'}</p>`;
-    defectInfoModal.classList.remove('hidden');
-}
+// Substitua a seção do event listener do 'defectDetailsContainer' por esta:
+defectDetailsContainer.addEventListener('click', (e) => {
+    if (e.target.closest('#back-to-list-btn')) {
+        defectDetailsContainer.classList.add('hidden');
+        carListContainer.classList.remove('hidden');
+        scanBtn.classList.remove('hidden');
+        changeStatusBtn.classList.add('hidden');
+        
+        // <<< ADICIONE ESTA LINHA para desativar o novo layout >>>
+        document.getElementById('app-container').classList.remove('details-view-active');
+    }
+});
 
 
 // --- Lógica de Processamento de Dados ---
@@ -271,48 +276,24 @@ function showNotification(message, type = 'info') {
 }
 
 function updateCarList(cars) {
-    // Define um mapa de cores para cada status
     const statusStyles = {
-        parked: {
-            text: 'Estacionado',
-            classes: 'bg-blue-100 text-blue-800'
-        },
-        pre_shipment: {
-            text: 'Pré-Embarque',
-            classes: 'bg-yellow-100 text-yellow-800'
-        },
-        shipped: {
-            text: 'Embarcado',
-            classes: 'bg-green-100 text-green-800'
-        },
-        // Adicione outros status aqui se precisar
-        default: {
-            text: 'Desconhecido',
-            classes: 'bg-gray-100 text-gray-800'
-        }
+        parked: { text: 'Estacionado', classes: 'bg-blue-100 text-blue-800' },
+        pre_shipment: { text: 'Pré-Embarque', classes: 'bg-yellow-100 text-yellow-800' },
+        shipped: { text: 'Embarcado', classes: 'bg-green-100 text-green-800' },
+        default: { text: 'Desconhecido', classes: 'bg-gray-100 text-gray-800' }
     };
-
     if (cars.length === 0) {
         carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
         return;
     }
-
     carListDiv.innerHTML = cars.map(car => {
-        // Pega o estilo correto ou usa o padrão se o status for desconhecido
         const style = statusStyles[car.status] || statusStyles.default;
-
         return `
         <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}" data-car-id="${car.carId}" data-status="${car.status}">
-            <div class="flex-1">
-                <div class="flex items-center justify-between">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.classes}">
-                        ${style.text}
-                    </span>
-                    <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
-                </div>
-                <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
-            </div>
-        </div>`;
+            <div class="flex-1"><div class="flex items-center justify-between">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.classes}">${style.text}</span>
+                <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span></div>
+                <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3></div></div>`;
     }).join('');
 }
 
@@ -374,7 +355,7 @@ function setupEventListeners() {
         const carItem = e.target.closest('.car-item');
         if (carItem) {
             const selectedCar = allCars.find(car => car.id === carItem.dataset.id);
-            if(selectedCar) fetchAndShowDefects(selectedCar);
+            if(selectedCar) showLookerDashboard(selectedCar);
         }
     });
 
@@ -385,14 +366,12 @@ function setupEventListeners() {
             scanBtn.classList.remove('hidden');
             changeStatusBtn.classList.add('hidden');
         }
-        const defectItem = e.target.closest('.defect-item');
-        if (defectItem) showDefectDetailsModal(JSON.parse(defectItem.dataset.details));
     });
-
-    closeDefectModalBtn.addEventListener('click', () => defectInfoModal.classList.add('hidden'));
-    defectModalOverlay.addEventListener('click', () => defectInfoModal.classList.add('hidden'));
+    
+    // Listeners do modal de status
     saveStatusBtn.addEventListener('click', handleChangeStatus);
     closeStatusModalBtn.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
+    statusModalOverlay.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
 }
 
 function setupRealtimeUpdates() {

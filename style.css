@@ -79,6 +79,24 @@ html, body {
     z-index: 10001;
     position: relative;
 }
+
+#app-container.details-view-active {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Ocupa 100% da altura da tela */
+}
+
+#app-container.details-view-active #map {
+    flex-shrink: 0; /* Impede o mapa de encolher */
+    height: 40%;    /* Define uma altura fixa para o mapa */
+}
+
+#app-container.details-view-active #defect-details-container {
+    flex-grow: 1; /* Faz o painel de defeitos ocupar todo o espaço restante */
+    display: flex;
+    flex-direction: column;
+}
+
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px); }
     to { opacity: 1; transform: translateY(0); }
