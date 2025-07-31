@@ -44,13 +44,27 @@ const statusModalOverlay = document.getElementById('status-modal-overlay');
 const statusSelect = document.getElementById('status-select');
 const saveStatusBtn = document.getElementById('save-status-btn');
 const closeStatusModalBtn = document.getElementById('close-status-modal-btn');
-// Os elementos do modal de defeitos foram removidos pois não são mais necessários
+// NOVOS ELEMENTOS DO FILTRO LOOKER
+const lookerFilterBtn = document.getElementById('looker-filter-btn');
+const lookerFilterModal = document.getElementById('looker-filter-modal');
+const lookerFilterOverlay = document.getElementById('looker-filter-overlay');
+const defectFilterOptionsDiv = document.getElementById('defect-filter-options');
+const applyLookerFilterBtn = document.getElementById('apply-looker-filter-btn');
+const closeLookerFilterBtn = document.getElementById('close-looker-filter-btn');
+
 
 // =================================================================
-// 3. ESTADO GLOBAL DA APLICAÇÃO
+// 3. ESTADO GLOBAL E CONSTANTES
 // =================================================================
 let map, markers = {}, html5QrCode = null, allCars = [], currentFilter = 'all';
 let currentlySelectedDocId = null; 
+
+// Lista de defeitos para o filtro múltipla escolha
+const defectFilterValues = [
+    "ABERTO: ASPECTO", "ABERTO: DEF FUNCIONAMENTO", "ABERTO: DEF MECANICO",
+    "ABERTO: DEFEITO GSAO", "ABERTO: DEGRADAÇÃO", "ABERTO: ENCH AR CONDICIONADO",
+    "ABERTO: RUIDO"
+];
 
 // =================================================================
 // 4. DEFINIÇÃO DE TODAS AS FUNÇÕES
@@ -148,11 +162,46 @@ function openChangeStatusModal(docId, currentStatus) {
     changeStatusModal.classList.remove('hidden');
 }
 
-// --- NOVA FUNÇÃO PARA MOSTRAR O DASHBOARD DO LOOKER ---
-/**
- * Mostra o painel de detalhes com o iframe do Looker.
- * @param {object} car - O objeto do carro selecionado.
- */
+// --- Funções do Looker (Filtro e Dashboard Individual) ---
+
+function populateDefectFilterOptions() {
+    defectFilterOptionsDiv.innerHTML = defectFilterValues.map(value => `
+        <label class="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-50">
+            <input type="checkbox" class="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" name="defect-filter" value="${value}">
+            <span class="text-gray-700">${value.replace('ABERTO: ', '')}</span>
+        </label>
+    `).join('');
+}
+
+function openLookerFilterModal() {
+    populateDefectFilterOptions();
+    lookerFilterModal.classList.remove('hidden');
+}
+
+function applyLookerFilter() {
+    const selectedDefects = Array.from(document.querySelectorAll('input[name="defect-filter"]:checked'))
+        .map(checkbox => checkbox.value);
+
+    if (selectedDefects.length === 0) {
+        showNotification("Selecione ao menos um tipo de defeito.", "error");
+        return;
+    }
+
+    if (allCars.length === 0) {
+        showNotification("Não há veículos no pátio para filtrar.", "error");
+        return;
+    }
+    const allPJIs = allCars.map(car => `65625${car.carId}`);
+
+    const defectsParam = encodeURIComponent(selectedDefects.join(','));
+    const pjisParam = encodeURIComponent(allPJIs.join(','));
+
+    const lookerUrl = `https://renaultssaope.cloud.looker.com/dashboards/115880?Repair+Code+Label=${defectsParam}&PJI=${pjisParam}&allow_login_screen=true`;
+    window.open(lookerUrl, '_blank');
+    
+    lookerFilterModal.classList.add('hidden');
+}
+
 function showLookerDashboard(car) {
     focusOnCar(car.id);
     
@@ -163,12 +212,10 @@ function showLookerDashboard(car) {
     carListContainer.classList.add('hidden');
     defectDetailsContainer.classList.remove('hidden');
     scanBtn.classList.add('hidden');
-    
-    // <<< ADICIONE ESTA LINHA para ativar o novo layout >>>
     document.getElementById('app-container').classList.add('details-view-active');
 
     const pjiFilter = `65625${car.carId}`;
-    const lookerUrl = `https://renaultssaope.cloud.looker.com/embed/dashboards/115875?PJI=${pjiFilter}&hide_header=true&hide_title=true&allow_login_screen=true`;
+    const lookerUrl = `https://renaultssaope.cloud.looker.com/embed/dashboards/115875?PJI=${pjiFilter}&allow_login_screen=true`;
 
     defectDetailsContainer.innerHTML = `
         <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
@@ -183,29 +230,10 @@ function showLookerDashboard(car) {
             </div>
         </div>
         <div class="w-full flex-grow p-1 bg-gray-200">
-            <iframe
-                src="${lookerUrl}"
-                class="w-full h-full border-0"
-                frameborder="0"
-                allowtransparency>
-            </iframe>
+            <iframe src="${lookerUrl}" class="w-full h-full border-0" frameborder="0" allowtransparency></iframe>
         </div>
     `;
 }
-
-// Substitua a seção do event listener do 'defectDetailsContainer' por esta:
-defectDetailsContainer.addEventListener('click', (e) => {
-    if (e.target.closest('#back-to-list-btn')) {
-        defectDetailsContainer.classList.add('hidden');
-        carListContainer.classList.remove('hidden');
-        scanBtn.classList.remove('hidden');
-        changeStatusBtn.classList.add('hidden');
-        
-        // <<< ADICIONE ESTA LINHA para desativar o novo layout >>>
-        document.getElementById('app-container').classList.remove('details-view-active');
-    }
-});
-
 
 // --- Lógica de Processamento de Dados ---
 function handleManualSave() {
@@ -365,6 +393,7 @@ function setupEventListeners() {
             carListContainer.classList.remove('hidden');
             scanBtn.classList.remove('hidden');
             changeStatusBtn.classList.add('hidden');
+            document.getElementById('app-container').classList.remove('details-view-active');
         }
     });
     
@@ -372,6 +401,12 @@ function setupEventListeners() {
     saveStatusBtn.addEventListener('click', handleChangeStatus);
     closeStatusModalBtn.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
     statusModalOverlay.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
+
+    // Listeners do NOVO modal de filtro do Looker
+    lookerFilterBtn.addEventListener('click', openLookerFilterModal);
+    closeLookerFilterBtn.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
+    lookerFilterOverlay.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
+    applyLookerFilterBtn.addEventListener('click', applyLookerFilter);
 }
 
 function setupRealtimeUpdates() {

@@ -19,6 +19,11 @@
                 <div class="flex justify-between items-center">
                     <h2 class="text-xl font-bold text-gray-800">Veículos no Pátio</h2>
                     <div class="flex space-x-2">
+                        <button id="looker-filter-btn" title="Filtro Dashboard" class="p-2 rounded-full bg-gray-100 hover:bg-gray-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                            </svg>
+                        </button>
                         <button id="filter-btn" title="Alternar Filtro" class="p-2 rounded-full bg-gray-100 hover:bg-gray-200">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
                         </button>
@@ -85,6 +90,26 @@
             <div class="mt-6 flex items-center space-x-2">
                  <button id="save-status-btn" class="flex-1 bg-green-600 text-white p-3 rounded-lg font-semibold hover:bg-green-700">Salvar Status</button>
                  <button id="close-status-modal-btn" class="flex-1 bg-gray-300 text-gray-800 p-3 rounded-lg font-semibold hover:bg-gray-400">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="looker-filter-modal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center">
+        <div class="absolute inset-0 bg-black bg-opacity-60" id="looker-filter-overlay"></div>
+        <div class="w-full max-w-md bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
+            <h3 class="text-2xl font-bold border-b pb-2 mb-4">Filtro para Dashboard Looker</h3>
+            <p class="text-sm text-gray-600 mb-4">Selecione um ou mais tipos de defeito para visualizar no dashboard. Todos os veículos atualmente no pátio serão incluídos.</p>
+            
+            <div id="defect-filter-options" class="space-y-2 max-h-60 overflow-y-auto border p-3 rounded-lg">
+                </div>
+
+            <div class="mt-6 flex items-center space-x-2">
+                <button id="apply-looker-filter-btn" class="flex-1 bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+                    Abrir Dashboard
+                </button>
+                <button id="close-looker-filter-btn" class="flex-1 bg-gray-300 text-gray-800 p-3 rounded-lg font-semibold hover:bg-gray-400">
+                    Cancelar
+                </button>
             </div>
         </div>
     </div>
