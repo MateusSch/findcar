@@ -62,8 +62,10 @@ let currentlySelectedDocId = null;
 // Lista de defeitos para o filtro múltipla escolha
 const defectFilterValues = [
     "ABERTO: ASPECTO", "ABERTO: DEF FUNCIONAMENTO", "ABERTO: DEF MECANICO",
-    "ABERTO: DEFEITO GSAO", "ABERTO: DEGRADAÇÃO", "ABERTO: ENCH AR CONDICIONADO",
-    "ABERTO: RUIDO"
+    "ABERTO: DEFEITO GSAO", "ABERTO: DEGRADAÇÃO", "ABERTO: ENCHIMENTO",
+    "ABERTO: ESTANQUEIDADE", "ABERTO: GEOMETRIA","ABERTO: RUIDO",
+    "ABERTO: DEF ELETRICO", "DEFEITO ABERTO ELÉTRICO", "DEFEITO ABERTO RUÍDOS",
+    "DEFEITO ABERTO S.A.O", "DEFEITO ABERTO: SAO"
 ];
 
 // =================================================================
@@ -257,21 +259,22 @@ async function handleChangeStatus() {
 }
 
 async function processCarId(carId) {
-    if (!carId) return showNotification('O ID do veículo não pode ser vazio.', 'error');
-    if (!/^[0-9]+$/.test(carId)) return showNotification('ID inválido. Use apenas números.', 'error');
+    const finalCarId = carId.substring(0, 7); // Pega apenas os 7 primeiros caracteres
+    if (!finalCarId) return showNotification('O ID do veículo não pode ser vazio.', 'error');
+    if (!/^[0-9]+$/.test(finalCarId)) return showNotification('ID inválido. Use apenas números.', 'error');
     closeScannerModal();
-    showNotification(`Veículo ${carId} recebido...`, 'info');
+    showNotification(`Veículo ${finalCarId} recebido...`, 'info');
     try {
-        const q = query(carsCollection, where("carId", "==", carId));
+        const q = query(carsCollection, where("carId", "==", finalCarId));
         const querySnapshot = await getDocs(q);
         const position = await getCurrentLocation();
         if (querySnapshot.empty) {
-            await addDoc(carsCollection, { carId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
-            showNotification(`Novo veículo ${carId} adicionado!`, 'success');
+            await addDoc(carsCollection, { carId: finalCarId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
+            showNotification(`Novo veículo ${finalCarId} adicionado!`, 'success');
         } else {
             const docRef = doc(db, "parkedCars", querySnapshot.docs[0].id);
             await updateDoc(docRef, { lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
-            showNotification(`Veículo ${carId} atualizado!`, 'success');
+            showNotification(`Veículo ${finalCarId} atualizado!`, 'success');
         }
     } catch (error) {
         showNotification("Erro ao processar: " + error.message, 'error');
