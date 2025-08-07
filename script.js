@@ -180,7 +180,7 @@ function openLookerFilterModal() {
     lookerFilterModal.classList.remove('hidden');
 }
 
-function applyLookerFilter() {
+async function applyLookerFilter() {
     const selectedDefects = Array.from(document.querySelectorAll('input[name="defect-filter"]:checked'))
         .map(checkbox => checkbox.value);
 
@@ -195,30 +195,27 @@ function applyLookerFilter() {
     }
     const allPJIs = allCars.map(car => `65625${car.carId}`);
 
-    const defectsParam = encodeURIComponent(selectedDefects.join(','));
-    const pjisParam = encodeURIComponent(allPJIs.join(','));
-
-    const lookerUrl = `https://renaultssaope.cloud.looker.com/dashboards/115880?Repair+Code+Label=${defectsParam}&PJI=${pjisParam}&allow_login_screen=true`;
-    window.open(lookerUrl, '_blank');
-    
     lookerFilterModal.classList.add('hidden');
+    await fetchLookerData(allPJIs, selectedDefects);
 }
 
-function showLookerDashboard(car) {
+async function showLookerDashboard(car) {
     focusOnCar(car.id);
     
+    // Mostra a tela de detalhes e esconde a lista
     changeStatusBtn.classList.remove('hidden');
     changeStatusBtn.dataset.docId = car.id;
     changeStatusBtn.dataset.currentStatus = car.status;
-
     carListContainer.classList.add('hidden');
     defectDetailsContainer.classList.remove('hidden');
     scanBtn.classList.add('hidden');
     document.getElementById('app-container').classList.add('details-view-active');
 
-    const pjiFilter = `65625${car.carId}`;
-    const lookerUrl = `https://renaultssaope.cloud.looker.com/embed/dashboards/115875?PJI=${pjiFilter}&allow_login_screen=true`;
+    // Prepara os filtros para a busca
+    const pjiFilter = [`65625${car.carId}`];
+    const allDefectTypes = defectFilterValues; // Busca por todos os tipos de defeito para este carro
 
+    // Cria o cabeçalho da tela de detalhes
     defectDetailsContainer.innerHTML = `
         <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
             <div class="flex items-center">
@@ -227,14 +224,70 @@ function showLookerDashboard(car) {
                 </button>
                 <div>
                     <h2 class="text-xl font-bold text-gray-800">${car.carId}</h2>
-                    <p class="text-sm text-gray-600">Dashboard de Qualidade</p>
+                    <p class="text-sm text-gray-600">Buscando dados de Qualidade...</p>
                 </div>
             </div>
         </div>
-        <div class="w-full flex-grow p-1 bg-gray-200">
-            <iframe src="${lookerUrl}" class="w-full h-full border-0" frameborder="0" allowtransparency></iframe>
-        </div>
+        <div id="looker-data-content" class="p-4"></div>
     `;
+
+    // Busca os dados via Cloud Function
+    const lookerData = await fetchLookerData(pjiFilter, allDefectTypes);
+
+    // Exibe os dados recebidos
+    const contentDiv = document.getElementById('looker-data-content');
+    if (lookerData && lookerData.length > 0) {
+        // Formata os dados como uma lista (exemplo)
+        contentDiv.innerHTML = lookerData.map(item => `
+            <div class="bg-white p-3 mb-2 rounded-lg shadow-sm">
+                <p class="font-bold">${item['vehicle_production_defect.repair_code_label'] || 'Defeito não especificado'}</p>
+                <p class="text-sm text-gray-600">${item['seu_outro_campo_do_looker'] || ''}</p>
+            </div>
+        `).join('');
+    } else {
+        contentDiv.innerHTML = `<p class="text-center text-gray-600">Nenhum dado de defeito encontrado no Looker para este veículo.</p>`;
+    }
+}
+
+async function fetchLookerData(pjis, labels) {
+    // URL da sua Cloud Function
+    const cloudFunctionUrl = "https://get-looker-data-n6ubzhbssa-rj.a.run.app";
+
+    showNotification("Buscando dados no Looker...", 'info');
+    // Se você adicionou um overlay de loading, descomente a linha abaixo
+    // document.getElementById('loading-overlay').classList.remove('hidden');
+
+    try {
+        const response = await fetch(cloudFunctionUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pjis: pjis.join(','),
+                labels: labels.join(',')
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Erro ${response.status}: ${errorText}`);
+        }
+
+        const data = await response.json();
+        showNotification("Dados recebidos com sucesso!", 'success');
+        console.log("Dados recebidos do Looker:", data);
+        
+        // Exibe os dados recebidos em um alerta para teste
+        alert("Dados recebidos! Verifique o console para detalhes.");
+        
+        return data;
+
+    } catch (error) {
+        console.error('Erro ao buscar dados do Looker:', error);
+        showNotification(`Erro ao buscar dados: ${error.message}`, 'error');
+    } finally {
+        // Se você adicionou um overlay de loading, descomente a linha abaixo
+        // document.getElementById('loading-overlay').classList.add('hidden');
+    }
 }
 
 // --- Lógica de Processamento de Dados ---
