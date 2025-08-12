@@ -2,12 +2,12 @@
 // 1. IMPORTS E CONFIGURAÇÃO INICIAL
 // =================================================================
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { 
-    getFirestore, 
-    collection, 
-    addDoc, 
-    onSnapshot, 
-    query, 
+import {
+    getFirestore,
+    collection,
+    addDoc,
+    onSnapshot,
+    query,
     where,
     getDocs,
     doc,
@@ -22,6 +22,7 @@ const carsCollection = collection(db, "parkedCars");
 // =================================================================
 // 2. SELEÇÃO DE ELEMENTOS DA UI (DOM)
 // =================================================================
+const loadingOverlay = document.getElementById('loading-overlay');
 const mapElement = document.getElementById('map');
 const carListContainer = document.getElementById('car-list-container');
 const carListDiv = document.getElementById('car-list');
@@ -44,7 +45,6 @@ const statusModalOverlay = document.getElementById('status-modal-overlay');
 const statusSelect = document.getElementById('status-select');
 const saveStatusBtn = document.getElementById('save-status-btn');
 const closeStatusModalBtn = document.getElementById('close-status-modal-btn');
-// NOVOS ELEMENTOS DO FILTRO LOOKER
 const lookerFilterBtn = document.getElementById('looker-filter-btn');
 const lookerFilterModal = document.getElementById('looker-filter-modal');
 const lookerFilterOverlay = document.getElementById('looker-filter-overlay');
@@ -57,9 +57,11 @@ const closeLookerFilterBtn = document.getElementById('close-looker-filter-btn');
 // 3. ESTADO GLOBAL E CONSTANTES
 // =================================================================
 let map, markers = {}, html5QrCode = null, allCars = [], currentFilter = 'all';
-let currentlySelectedDocId = null; 
+let currentlySelectedDocId = null;
+let defectCarIds = [];
+// --- NOVO: Mapeamento de defeitos e cores ---
+let carDefects = {}; // Armazenará { carId: [lista de defeitos] }
 
-// Lista de defeitos para o filtro múltipla escolha
 const defectFilterValues = [
     "ABERTO: ASPECTO", "ABERTO: DEF FUNCIONAMENTO", "ABERTO: DEF MECANICO",
     "ABERTO: DEFEITO GSAO", "ABERTO: DEGRADAÇÃO", "ABERTO: ENCHIMENTO",
@@ -68,27 +70,78 @@ const defectFilterValues = [
     "DEFEITO ABERTO S.A.O", "DEFEITO ABERTO: SAO"
 ];
 
+// Mapeia cada tipo de defeito a uma cor. Sinta-se à vontade para alterar as cores.
+const defectColorMap = {
+    "ABERTO: GEOMETRIA": "#E74C3C",   // Vermelho
+    "ABERTO: RUIDO": "#F39C12",       // Laranja
+    "DEFEITO ABERTO RUÍDOS": "#F39C12", // Laranja
+    "ABERTO: DEF ELETRICO": "#F1C40F", // Amarelo
+    "DEFEITO ABERTO ELÉTRICO": "#F1C40F", // Amarelo
+    "ABERTO: ESTANQUEIDADE": "#3498DB", // Azul
+    "ABERTO: DEF MECANICO": "#9B59B6", // Roxo
+    "ABERTO: DEGRADAÇÃO": "#1ABC9C",   // Turquesa
+    "ABERTO: ENCHIMENTO": "#2ECC71",   // Verde Esmeralda
+    "ABERTO: ASPECTO": "#E67E22",      // Cenoura
+    "ABERTO: DEF FUNCIONAMENTO": "#D35400", // Laranja Escuro
+    "ABERTO: DEFEITO GSAO": "#7F8C8D", // Cinza
+    "DEFEITO ABERTO S.A.O": "#7F8C8D", // Cinza
+    "DEFEITO ABERTO: SAO": "#7F8C8D",  // Cinza
+};
+
+const DEFAULT_PIN_COLOR = '#888888'; // Cinza para carros sem defeito ou com defeito não mapeado
+
 // =================================================================
 // 4. DEFINIÇÃO DE TODAS AS FUNÇÕES
 // =================================================================
 
-// --- Funções do Mapa ---
-function initMap() {
-    map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+function createColoredIcon(color) {
+    // O SVG não precisa mais do 'style' de transformação, pois o L.DivIcon cuida do posicionamento.
+    const iconHtml = `
+    <svg viewBox="0 0 24 24" width="32" height="32">
+        <path fill="${color}" stroke="#000" stroke-width="1" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+    </svg>`;
+
+    return L.divIcon({
+        html: iconHtml,
+        className: 'custom-div-icon', // Classe CSS para remover estilos padrão
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],      // Ponto de ancoragem na ponta inferior do pino
+        popupAnchor: [0, -32],     // Posição do popup em relação ao ícone
+    });
 }
 
 function updateMarkers(cars) {
     Object.values(markers).forEach(marker => marker.remove());
     markers = {};
     cars.forEach(car => {
-        const marker = L.marker([car.lat, car.lng]).addTo(map).bindPopup(`<div class="font-bold">${car.carId}</div>`);
+        const defects = carDefects[car.carId];
+        let pinColor = DEFAULT_PIN_COLOR;
+
+        if (defects && defects.length > 0) {
+            // Pega o primeiro defeito da lista para definir a cor
+            const firstDefect = defects[0];
+            pinColor = defectColorMap[firstDefect] || DEFAULT_PIN_COLOR;
+        }
+
+        const icon = createColoredIcon(pinColor);
+
+        const marker = L.marker([car.lat, car.lng], { icon }) // Usa o novo ícone
+            .addTo(map)
+            .bindPopup(`<div class="font-bold">${car.carId}</div>`);
+
         marker.on('click', () => {
             showLookerDashboard(car);
         });
         markers[car.id] = marker;
     });
+}
+
+// ... (O restante das funções até fetchLookerData permanece igual) ...
+
+function initMap() {
+    map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 }
 
 function focusOnCar(docId) {
@@ -99,7 +152,6 @@ function focusOnCar(docId) {
     }
 }
 
-// --- Funções do Scanner e Modais ---
 function openScannerModal() {
     scannerModal.classList.remove('hidden');
     switchToScannerView();
@@ -138,9 +190,9 @@ function startScanner() {
         const formatsToSupport = [ Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.CODE_39 ];
         html5QrCode = new Html5Qrcode("reader", { formatsToSupport, verbose: false });
         html5QrCode.start(
-            { facingMode: "environment" }, 
+            { facingMode: "environment" },
             { fps: 10, qrbox: { width: 250, height: 100 } },
-            processCarId, 
+            processCarId,
             () => {}
         ).catch(error => {
             showNotification("Câmera não disponível. Use a digitação.", 'error');
@@ -163,8 +215,6 @@ function openChangeStatusModal(docId, currentStatus) {
     statusSelect.value = currentStatus;
     changeStatusModal.classList.remove('hidden');
 }
-
-// --- Funções do Looker (Filtro e Dashboard Individual) ---
 
 function populateDefectFilterOptions() {
     defectFilterOptionsDiv.innerHTML = defectFilterValues.map(value => `
@@ -195,14 +245,23 @@ async function applyLookerFilter() {
     }
     const allPJIs = allCars.map(car => `65625${car.carId}`);
 
+    const lookerData = await fetchLookerData(allPJIs, selectedDefects);
+
+    if (lookerData && lookerData.length > 0) {
+        const uniquePjisWithDefects = [...new Set(lookerData.map(item => item['vehicle.PJI']))];
+        defectCarIds = uniquePjisWithDefects.map(pji => pji.substring(5));
+        showNotification(`${defectCarIds.length} veículos com defeitos encontrados.`, 'success');
+    } else {
+        defectCarIds = [];
+        showNotification('Nenhum veículo encontrado com os defeitos selecionados.', 'info');
+    }
+
+    applyFiltersAndSearch();
     lookerFilterModal.classList.add('hidden');
-    await fetchLookerData(allPJIs, selectedDefects);
 }
 
 async function showLookerDashboard(car) {
     focusOnCar(car.id);
-    
-    // Mostra a tela de detalhes e esconde a lista
     changeStatusBtn.classList.remove('hidden');
     changeStatusBtn.dataset.docId = car.id;
     changeStatusBtn.dataset.currentStatus = car.status;
@@ -211,11 +270,9 @@ async function showLookerDashboard(car) {
     scanBtn.classList.add('hidden');
     document.getElementById('app-container').classList.add('details-view-active');
 
-    // Prepara os filtros para a busca
     const pjiFilter = [`65625${car.carId}`];
-    const allDefectTypes = defectFilterValues; // Busca por todos os tipos de defeito para este carro
+    const allDefectTypes = defectFilterValues;
 
-    // Cria o cabeçalho da tela de detalhes
     defectDetailsContainer.innerHTML = `
         <div class="sticky top-0 bg-white p-3 border-b border-gray-200 z-10">
             <div class="flex items-center">
@@ -228,20 +285,26 @@ async function showLookerDashboard(car) {
                 </div>
             </div>
         </div>
-        <div id="looker-data-content" class="p-4"></div>
+        <div id="looker-data-content" class="p-4"><div class="text-center py-10">Carregando...</div></div>
     `;
 
-    // Busca os dados via Cloud Function
+    document.getElementById('back-to-list-btn').addEventListener('click', () => {
+         defectDetailsContainer.classList.add('hidden');
+         carListContainer.classList.remove('hidden');
+         scanBtn.classList.remove('hidden');
+         changeStatusBtn.classList.add('hidden');
+         document.getElementById('app-container').classList.remove('details-view-active');
+    });
+
     const lookerData = await fetchLookerData(pjiFilter, allDefectTypes);
 
-    // Exibe os dados recebidos
     const contentDiv = document.getElementById('looker-data-content');
     if (lookerData && lookerData.length > 0) {
-        // Formata os dados como uma lista (exemplo)
         contentDiv.innerHTML = lookerData.map(item => `
             <div class="bg-white p-3 mb-2 rounded-lg shadow-sm">
                 <p class="font-bold">${item['vehicle_production_defect.repair_code_label'] || 'Defeito não especificado'}</p>
-                <p class="text-sm text-gray-600">${item['seu_outro_campo_do_looker'] || ''}</p>
+                <p class="text-sm text-gray-600">${item['incident_final.incident_label'] || 'Incidente não especificado'}</p>
+                <p class="text-xs text-gray-500 mt-1">Elemento: ${item['element_final.element_label'] || 'N/A'}</p>
             </div>
         `).join('');
     } else {
@@ -249,48 +312,63 @@ async function showLookerDashboard(car) {
     }
 }
 
+
+// --- ATUALIZAÇÃO: fetchLookerData não precisa mais da notificação de sucesso ---
 async function fetchLookerData(pjis, labels) {
-    // URL da sua Cloud Function
     const cloudFunctionUrl = "https://get-looker-data-n6ubzhbssa-rj.a.run.app";
-
-    showNotification("Buscando dados no Looker...", 'info');
-    // Se você adicionou um overlay de loading, descomente a linha abaixo
-    // document.getElementById('loading-overlay').classList.remove('hidden');
-
+    loadingOverlay.classList.remove('hidden');
     try {
         const response = await fetch(cloudFunctionUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                pjis: pjis.join(','),
-                labels: labels.join(',')
-            })
+            body: JSON.stringify({ pjis: pjis.join(','), labels: labels.join(',') })
         });
-
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`Erro ${response.status}: ${errorText}`);
         }
-
-        const data = await response.json();
-        showNotification("Dados recebidos com sucesso!", 'success');
-        console.log("Dados recebidos do Looker:", data);
-        
-        // Exibe os dados recebidos em um alerta para teste
-        alert("Dados recebidos! Verifique o console para detalhes.");
-        
-        return data;
-
+        return await response.json();
     } catch (error) {
         console.error('Erro ao buscar dados do Looker:', error);
         showNotification(`Erro ao buscar dados: ${error.message}`, 'error');
+        return [];
     } finally {
-        // Se você adicionou um overlay de loading, descomente a linha abaixo
-        // document.getElementById('loading-overlay').classList.add('hidden');
+        loadingOverlay.classList.add('hidden');
     }
 }
 
-// --- Lógica de Processamento de Dados ---
+// --- NOVO: Função para buscar todos os defeitos de todos os carros ---
+async function fetchAllCarDefects(cars) {
+    if (cars.length === 0) return;
+
+    const allPJIs = cars.map(car => `65625${car.carId}`);
+    // Busca por todos os tipos de defeito definidos
+    const lookerData = await fetchLookerData(allPJIs, defectFilterValues);
+
+    if (lookerData && lookerData.length > 0) {
+        // Agrupa os defeitos por PJI
+        const defectsByPji = lookerData.reduce((acc, defect) => {
+            const pji = defect['vehicle.PJI'];
+            const label = defect['vehicle_production_defect.repair_code_label'];
+            if (!acc[pji]) {
+                acc[pji] = [];
+            }
+            acc[pji].push(label);
+            return acc;
+        }, {});
+
+        // Converte os PJIs de volta para carId e armazena no estado global
+        carDefects = {}; // Limpa o estado anterior
+        for (const pji in defectsByPji) {
+            const carId = pji.substring(5);
+            carDefects[carId] = defectsByPji[pji];
+        }
+        console.log("Defeitos por carro:", carDefects);
+        // Força a atualização do mapa com as novas cores
+        applyFiltersAndSearch();
+    }
+}
+
 function handleManualSave() {
     processCarId(manualCarIdInput.value.trim());
 }
@@ -312,7 +390,7 @@ async function handleChangeStatus() {
 }
 
 async function processCarId(carId) {
-    const finalCarId = carId.substring(0, 7); // Pega apenas os 7 primeiros caracteres
+    const finalCarId = carId.substring(0, 7);
     if (!finalCarId) return showNotification('O ID do veículo não pode ser vazio.', 'error');
     if (!/^[0-9]+$/.test(finalCarId)) return showNotification('ID inválido. Use apenas números.', 'error');
     closeScannerModal();
@@ -334,7 +412,6 @@ async function processCarId(carId) {
     }
 }
 
-// --- Funções de UI Auxiliares ---
 function getCurrentLocation() {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) return reject(new Error("Geolocalização não suportada."));
@@ -367,7 +444,7 @@ function updateCarList(cars) {
         default: { text: 'Desconhecido', classes: 'bg-gray-100 text-gray-800' }
     };
     if (cars.length === 0) {
-        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo no pátio</h3></div>`;
+        carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo encontrado</h3><p class="text-sm text-gray-500">Tente ajustar seus filtros.</p></div>`;
         return;
     }
     carListDiv.innerHTML = cars.map(car => {
@@ -393,10 +470,27 @@ function timeAgo(date) {
 
 function applyFiltersAndSearch() {
     let processedCars = [...allCars];
-    if (currentFilter !== 'all') processedCars = processedCars.filter(car => car.status === currentFilter);
+
+    if (defectCarIds.length > 0) {
+        processedCars = processedCars.filter(car => defectCarIds.includes(car.carId));
+    }
+
+    if (currentFilter !== 'all') {
+        processedCars = processedCars.filter(car => car.status === currentFilter);
+    }
+
     const searchTerm = searchInput.value.toLowerCase();
-    if (searchTerm) processedCars = processedCars.filter(car => car.carId.toLowerCase().includes(searchTerm));
+    if (searchTerm) {
+        processedCars = processedCars.filter(car => car.carId.toLowerCase().includes(searchTerm));
+    }
+
     updateCarList(processedCars);
+    updateMarkers(processedCars);
+
+    if (processedCars.length > 0) {
+        const bounds = L.latLngBounds(processedCars.map(car => [car.lat, car.lng]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+    }
 }
 
 function handleFilterClick() {
@@ -409,11 +503,10 @@ function handleRefreshClick() {
     showNotification('Lista atualizada.', 'info');
     currentFilter = 'all';
     searchInput.value = '';
+    defectCarIds = [];
     applyFiltersAndSearch();
-    if (allCars.length > 0) {
-        const bounds = L.latLngBounds(allCars.map(car => [car.lat, car.lng]));
-        map.fitBounds(bounds, { padding: [50, 50] });
-    }
+    // Ao atualizar, busca novamente os defeitos de todos os carros
+    fetchAllCarDefects(allCars);
 }
 
 // =================================================================
@@ -443,22 +536,10 @@ function setupEventListeners() {
         }
     });
 
-    defectDetailsContainer.addEventListener('click', (e) => {
-        if (e.target.closest('#back-to-list-btn')) {
-            defectDetailsContainer.classList.add('hidden');
-            carListContainer.classList.remove('hidden');
-            scanBtn.classList.remove('hidden');
-            changeStatusBtn.classList.add('hidden');
-            document.getElementById('app-container').classList.remove('details-view-active');
-        }
-    });
-    
-    // Listeners do modal de status
     saveStatusBtn.addEventListener('click', handleChangeStatus);
     closeStatusModalBtn.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
     statusModalOverlay.addEventListener('click', () => changeStatusModal.classList.add('hidden'));
 
-    // Listeners do NOVO modal de filtro do Looker
     lookerFilterBtn.addEventListener('click', openLookerFilterModal);
     closeLookerFilterBtn.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
     lookerFilterOverlay.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
@@ -468,9 +549,17 @@ function setupEventListeners() {
 function setupRealtimeUpdates() {
     const q = query(carsCollection, orderBy("timestamp", "desc"));
     onSnapshot(q, (snapshot) => {
+        const firstLoad = allCars.length === 0;
         allCars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), timestamp: doc.data().timestamp.toDate() }));
+        
+        // Aplica filtros imediatamente para mostrar os carros na lista e no mapa (com cor padrão)
         applyFiltersAndSearch();
-        updateMarkers(allCars);
+
+        // Se for a primeira carga de dados, busca os defeitos de todos os carros em segundo plano
+        if (firstLoad) {
+            showNotification("Buscando status de defeitos...", "info");
+            fetchAllCarDefects(allCars);
+        }
     });
 }
 

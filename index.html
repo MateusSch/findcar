@@ -97,21 +97,26 @@
     <div id="looker-filter-modal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center">
         <div class="absolute inset-0 bg-black bg-opacity-60" id="looker-filter-overlay"></div>
         <div class="w-full max-w-md bg-white p-6 rounded-xl shadow-2xl text-gray-800 relative">
-            <h3 class="text-2xl font-bold border-b pb-2 mb-4">Filtro para Dashboard Looker</h3>
-            <p class="text-sm text-gray-600 mb-4">Selecione um ou mais tipos de defeito para visualizar no dashboard. Todos os veículos atualmente no pátio serão incluídos.</p>
+            <h3 class="text-2xl font-bold border-b pb-2 mb-4">Filtro de Defeitos em Aberto</h3>
+            <p class="text-sm text-gray-600 mb-4">Selecione um ou mais tipos de defeito. Todos os veículos atualmente no pátio serão incluídos.</p>
             
             <div id="defect-filter-options" class="space-y-2 max-h-60 overflow-y-auto border p-3 rounded-lg">
                 </div>
 
             <div class="mt-6 flex items-center space-x-2">
                 <button id="apply-looker-filter-btn" class="flex-1 bg-blue-600 text-white p-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
-                    Abrir Dashboard
+                    Filtrar
                 </button>
                 <button id="close-looker-filter-btn" class="flex-1 bg-gray-300 text-gray-800 p-3 rounded-lg font-semibold hover:bg-gray-400">
                     Cancelar
                 </button>
             </div>
         </div>
+    </div>
+
+    <div id="loading-overlay" class="hidden">
+        <div class="loading-spinner"></div>
+        <p class="mt-4 text-white text-lg font-semibold">Buscando dados...</p>
     </div>
     
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
