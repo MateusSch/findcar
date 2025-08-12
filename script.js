@@ -51,6 +51,8 @@ const lookerFilterOverlay = document.getElementById('looker-filter-overlay');
 const defectFilterOptionsDiv = document.getElementById('defect-filter-options');
 const applyLookerFilterBtn = document.getElementById('apply-looker-filter-btn');
 const closeLookerFilterBtn = document.getElementById('close-looker-filter-btn');
+const nfcScanModal = document.getElementById('nfc-scan-modal');
+const cancelNfcScanBtn = document.getElementById('cancel-nfc-scan-btn');
 
 
 // =================================================================
@@ -59,8 +61,9 @@ const closeLookerFilterBtn = document.getElementById('close-looker-filter-btn');
 let map, markers = {}, html5QrCode = null, allCars = [], currentFilter = 'all';
 let currentlySelectedDocId = null;
 let defectCarIds = [];
-// --- NOVO: Mapeamento de defeitos e cores ---
-let carDefects = {}; // Armazenará { carId: [lista de defeitos] }
+let carDefects = {};
+let currentCarIdForNfc = null;
+let nfcController = null;
 
 const defectFilterValues = [
     "ABERTO: ASPECTO", "ABERTO: DEF FUNCIONAMENTO", "ABERTO: DEF MECANICO",
@@ -136,7 +139,6 @@ function updateMarkers(cars) {
     });
 }
 
-// ... (O restante das funções até fetchLookerData permanece igual) ...
 
 function initMap() {
     map = L.map(mapElement, { zoomControl: false, tap: false }).setView([-25.4411, -49.2731], 15);
@@ -391,24 +393,90 @@ async function handleChangeStatus() {
 
 async function processCarId(carId) {
     const finalCarId = carId.substring(0, 7);
-    if (!finalCarId) return showNotification('O ID do veículo não pode ser vazio.', 'error');
-    if (!/^[0-9]+$/.test(finalCarId)) return showNotification('ID inválido. Use apenas números.', 'error');
+    if (!finalCarId || !/^[0-9]+$/.test(finalCarId)) {
+        return showNotification('ID do veículo inválido.', 'error');
+    }
+    
     closeScannerModal();
-    showNotification(`Veículo ${finalCarId} recebido...`, 'info');
+    currentCarIdForNfc = finalCarId; // Armazena o ID do carro
+
+    // Verifica se a Web NFC API está disponível
+    if ('NDEFReader' in window) {
+        startNfcScan();
+    } else {
+        showNotification("Web NFC não suportado. Salve o carro sem a tag.", 'info');
+        // Se não houver suporte, salva o carro apenas com a localização
+        await saveCarData(finalCarId, null);
+    }
+}
+
+function openNfcModal() {
+    nfcScanModal.classList.remove('hidden');
+}
+
+function closeNfcModal() {
+    if (nfcController) {
+        nfcController.abort(); // Cancela a operação de scan
+        nfcController = null;
+    }
+    nfcScanModal.classList.add('hidden');
+} 
+
+async function startNfcScan() {
+    openNfcModal();
     try {
-        const q = query(carsCollection, where("carId", "==", finalCarId));
+        const ndef = new NDEFReader();
+        nfcController = new AbortController(); // Permite cancelar o scan
+
+        await ndef.scan({ signal: nfcController.signal });
+
+        ndef.addEventListener('reading', async ({ serialNumber }) => {
+            console.log(`Tag NFC lida! Serial Number: ${serialNumber}`);
+            closeNfcModal();
+            await saveCarData(currentCarIdForNfc, serialNumber);
+        });
+
+        ndef.addEventListener('error', (event) => {
+            showNotification('Erro na leitura da tag NFC. Tente novamente.', 'error');
+            console.error("NFC Error:", event);
+            closeNfcModal();
+        });
+
+    } catch (error) {
+        showNotification(`Erro ao iniciar NFC: ${error.message}`, 'error');
+        console.error("Erro ao iniciar o scanner NFC:", error);
+        closeNfcModal();
+    }
+}
+
+async function saveCarData(carId, nfcTagId) {
+    showNotification(`Processando veículo ${carId}...`, 'info');
+    try {
+        const q = query(carsCollection, where("carId", "==", carId));
         const querySnapshot = await getDocs(q);
         const position = await getCurrentLocation();
+        
+        const carData = {
+            carId: carId,
+            lat: position.lat,
+            lng: position.lng,
+            timestamp: new Date(),
+            status: 'parked',
+            nfcTagId: nfcTagId || null // Adiciona o ID da tag NFC ou null
+        };
+
         if (querySnapshot.empty) {
-            await addDoc(carsCollection, { carId: finalCarId, lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
-            showNotification(`Novo veículo ${finalCarId} adicionado!`, 'success');
+            await addDoc(carsCollection, carData);
+            showNotification(`Novo veículo ${carId} adicionado com tag NFC!`, 'success');
         } else {
             const docRef = doc(db, "parkedCars", querySnapshot.docs[0].id);
-            await updateDoc(docRef, { lat: position.lat, lng: position.lng, timestamp: new Date(), status: 'parked' });
-            showNotification(`Veículo ${finalCarId} atualizado!`, 'success');
+            await updateDoc(docRef, carData);
+            showNotification(`Veículo ${carId} atualizado com tag NFC!`, 'success');
         }
     } catch (error) {
-        showNotification("Erro ao processar: " + error.message, 'error');
+        showNotification(`Erro ao salvar dados: ${error.message}`, 'error');
+    } finally {
+        currentCarIdForNfc = null; // Limpa o estado
     }
 }
 
@@ -544,6 +612,7 @@ function setupEventListeners() {
     closeLookerFilterBtn.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
     lookerFilterOverlay.addEventListener('click', () => lookerFilterModal.classList.add('hidden'));
     applyLookerFilterBtn.addEventListener('click', applyLookerFilter);
+    cancelNfcScanBtn.addEventListener('click', closeNfcModal);
 }
 
 function setupRealtimeUpdates() {
