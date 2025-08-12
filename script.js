@@ -426,14 +426,28 @@ async function startNfcScan() {
     openNfcModal();
     try {
         const ndef = new NDEFReader();
-        nfcController = new AbortController(); // Permite cancelar o scan
+        nfcController = new AbortController();
 
         await ndef.scan({ signal: nfcController.signal });
 
         ndef.addEventListener('reading', async ({ serialNumber }) => {
-            console.log(`Tag NFC lida! Serial Number: ${serialNumber}`);
+            console.log(`Tag NFC (Hex Original): ${serialNumber}`);
+
+            // 1. Remove os dois pontos do serial number hexadecimal.
+            // Ex: "04:d1:6c:92:ab:1f:90" -> "04d16c92ab1f90"
+            const hexSerialNumber = serialNumber.replace(/:/g, '');
+
+            // 2. Converte a string hexadecimal para um número decimal.
+            const decimalSerialNumber = parseInt(hexSerialNumber, 16);
+
+            // 3. Converte o número decimal para uma string para salvar no banco.
+            const standardizedSerialNumber = decimalSerialNumber.toString();
+
+            console.log(`Tag NFC (Decimal Padronizado): ${standardizedSerialNumber}`);
+
             closeNfcModal();
-            await saveCarData(currentCarIdForNfc, serialNumber);
+            // Salva o ID já padronizado no formato decimal.
+            await saveCarData(currentCarIdForNfc, standardizedSerialNumber);
         });
 
         ndef.addEventListener('error', (event) => {
