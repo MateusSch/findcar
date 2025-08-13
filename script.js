@@ -194,14 +194,18 @@ function toggleModalView() {
 }
 
 function startScanner(onSuccess, formats) {
-    if (html5QrCode && html5QrCode.isScanning) stopScanner();
+    // A verificação de scanner ativo foi removida daqui para ser controlada pelo fluxo principal
     try {
         html5QrCode = new Html5Qrcode("reader", { formatsToSupport: formats, verbose: false });
-        html5QrCode.start({ facingMode: "environment" }, { fps: 10}, onSuccess, () => {})
-            .catch(err => {
-                showNotification("Câmera não disponível. Use a digitação.", 'error');
-                switchToManualView();
-            });
+        html5QrCode.start(
+            { facingMode: "environment" },
+            { fps: 10 },
+            onSuccess,
+            () => {}
+        ).catch(err => {
+            showNotification("Câmera não disponível. Use a digitação.", 'error');
+            switchToManualView();
+        });
     } catch (error) {
         showNotification("Erro ao iniciar o scanner", 'error');
         switchToManualView();
@@ -210,25 +214,35 @@ function startScanner(onSuccess, formats) {
 
 function stopScanner() {
     if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().catch(err => console.error("Erro ao parar scanner:", err));
+        // ATUALIZAÇÃO: Retorna a promessa para que possamos esperar ela terminar
+        return html5QrCode.stop().catch(err => console.error("Erro ao parar scanner:", err));
     }
+    // Se não estiver escaneando, retorna uma promessa já resolvida
+    return Promise.resolve();
 }
 
 // --- Funções de Lógica de Dados ---
 
-function processCarId(decodedText) {
+async function processCarId(decodedText) {
     const finalCarId = decodedText.substring(0, 17);
     if (!finalCarId) {
         showNotification('Código do veículo inválido.', 'error');
-        switchToScannerView(); // Reinicia o scan para o usuário tentar novamente
+        switchToScannerView();
         return;
     }
-    pendingCarId = decodedText;
-    stopScanner();
+    
+    pendingCarId = finalCarId;
+    
+    // ATUALIZAÇÃO: Espera o scanner parar completamente
+    await stopScanner();
+    
+    // Agora que parou, atualiza os textos e reinicia para o próximo passo
     scannerTitle.textContent = 'Escaneie o QR Code da TAG';
     scannerSubtitle.textContent = 'Aponte a câmera para o código da tag.';
+    
     manualView.classList.add('hidden');
     scannerView.classList.remove('hidden');
+    
     startScanner(processTagId, [Html5QrcodeSupportedFormats.QR_CODE]);
 }
 
