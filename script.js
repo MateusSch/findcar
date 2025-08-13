@@ -395,11 +395,11 @@ async function applyLookerFilter() {
         showNotification("Não há veículos no pátio para filtrar.", "error");
         return;
     }
-    const allPJIs = allCars.map(car => `65625${car.carId}`);
+    const allPJIs = allCars.map(car => `${car.carId}`);
     const lookerData = await fetchLookerData(allPJIs, selectedDefects);
     if (lookerData && lookerData.length > 0) {
-        const uniquePjisWithDefects = [...new Set(lookerData.map(item => item['vehicle.PJI']))];
-        defectCarIds = uniquePjisWithDefects.map(pji => pji ? pji.substring(5) : '').filter(Boolean);
+        const uniquePjisWithDefects = [...new Set(lookerData.map(item => item['vehicle.VIN']))];
+        defectCarIds = uniquePjisWithDefects.map(pji => pji ? pji.trim() : '').filter(Boolean);
         showNotification(`${defectCarIds.length} veículos com defeitos encontrados.`, 'success');
     } else {
         defectCarIds = [];
@@ -427,11 +427,11 @@ async function fetchLookerData(pjis, labels) {
 
 async function fetchAllCarDefects(cars) {
     if (cars.length === 0) return;
-    const allPJIs = cars.map(car => `65625${car.carId}`);
+    const allPJIs = cars.map(car => `${car.carId}`);
     const lookerData = await fetchLookerData(allPJIs, defectFilterValues);
     if (lookerData && lookerData.length > 0) {
         const defectsByPji = lookerData.reduce((acc, defect) => {
-            const pji = defect['vehicle.PJI'];
+            const pji = defect['vehicle.VIN'];
             if (pji) {
                 if (!acc[pji]) acc[pji] = [];
                 acc[pji].push(defect['vehicle_production_defect.repair_code_label']);
@@ -476,7 +476,7 @@ async function showLookerDashboard(car) {
         changeStatusBtn.classList.add('hidden');
         document.getElementById('app-container').classList.remove('details-view-active');
     });
-    const lookerData = await fetchLookerData([`65625${car.carId}`], defectFilterValues);
+    const lookerData = await fetchLookerData([`${car.carId}`], defectFilterValues);
     const contentDiv = document.getElementById('looker-data-content');
     if (lookerData && lookerData.length > 0) {
         contentDiv.innerHTML = lookerData.map(item => `
