@@ -313,24 +313,38 @@ function getCurrentLocation() {
 // --- Funções de Filtro e Exibição ---
 
 function updateCarList(cars) {
-    const statusStyles = { parked: { text: 'Estacionado', classes: 'bg-blue-100 text-blue-800' }, pre_shipment: { text: 'Pré-Embarque', classes: 'bg-yellow-100 text-yellow-800' }, shipped: { text: 'Embarcado', classes: 'bg-green-100 text-green-800' }, default: { text: 'Desconhecido', classes: 'bg-gray-100 text-gray-800' } };
+    const statusStyles = { 
+        parked: { text: 'Estacionado', classes: 'bg-blue-100 text-blue-800' }, 
+        pre_shipment: { text: 'Pré-Embarque', classes: 'bg-yellow-100 text-yellow-800' }, 
+        shipped: { text: 'Embarcado', classes: 'bg-green-100 text-green-800' }, 
+        default: { text: 'Desconhecido', classes: 'bg-gray-100 text-gray-800' } 
+    };
+
     if (cars.length === 0) {
         carListDiv.innerHTML = `<div class="text-center py-10"><h3 class="mt-4 text-lg font-medium text-gray-900">Nenhum veículo encontrado</h3><p class="text-sm text-gray-500">Tente ajustar seus filtros.</p></div>`;
         return;
     }
+
     carListDiv.innerHTML = cars.map(car => {
         const style = statusStyles[car.status] || statusStyles.default;
-        const tagHtml = car.nfcTagId ? `<p class="text-xs text-gray-500 font-mono mt-1">TAG: ${car.nfcTagId}</p>` : '';
+        const tagHtml = car.nfcTagId 
+            ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">${car.nfcTagId}</span>` 
+            : '';
+
         return `
         <div class="car-item bg-white rounded-lg shadow-sm overflow-hidden p-3 hover:bg-blue-50 transition-colors cursor-pointer" data-id="${car.id}" data-car-id="${car.carId}" data-status="${car.status}">
             <div class="flex-1">
                 <div class="flex items-center justify-between">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.classes}">${style.text}</span>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${style.classes}">${style.text}</span>
+                        ${tagHtml} 
+                    </div>
+
                     <span class="text-xs text-gray-500">${timeAgo(car.timestamp)}</span>
                 </div>
                 <h3 class="mt-1 text-lg font-bold text-gray-900">${car.carId}</h3>
-                ${tagHtml}
-            </div>
+                </div>
         </div>`;
     }).join('');
 }
