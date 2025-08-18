@@ -543,10 +543,12 @@ function setupRealtimeUpdates() {
     onSnapshot(q, (snapshot) => {
         const firstLoad = allCars.length === 0;
         allCars = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), timestamp: doc.data().timestamp.toDate() }));
-        applyFiltersAndSearch();
+
         if (firstLoad) {
             showNotification("Buscando status de defeitos...", "info");
             fetchAllCarDefects(allCars);
+        } else {
+            applyFiltersAndSearch();
         }
     });
 }
